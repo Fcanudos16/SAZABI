@@ -1,0 +1,3 @@
+# Sem dependências de runtime: o SAZABI V1 usa apenas a biblioteca padrão (Python 3.9+).
+# Apenas para rodar os testes:
+pytest>=7
