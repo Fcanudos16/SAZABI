@@ -17,6 +17,12 @@ class ConnectRequest:
     key: str = field(repr=False)
 
 
+@dataclass
+class OllamaRequest:
+    action: str
+    model: str = ''
+
+
 class AgentWorker:
     """Creates, uses and closes SQLite on its owning worker thread."""
     def __init__(self, config, factory=build_agent, snapshots=False):
@@ -38,6 +44,20 @@ class AgentWorker:
                 command = self.commands.get()
                 if command is None:
                     break
+                if isinstance(command, OllamaRequest):
+                    try:
+                        from analysis.ai_provider import list_models
+                        from core.connection import configure_ollama
+                        if command.action == 'list':
+                            self.events.put(('ollama_models', list_models()))
+                        else:
+                            configure_ollama(agent, command.model)
+                            self.events.put(('ollama_ready', 'IA local ativada: ' + command.model if command.model else 'IA local desativada.'))
+                    except (ValueError, OSError) as error:
+                        self.events.put(('ollama_error', str(error) if isinstance(error, ValueError) else 'Não foi possível salvar a configuração local.'))
+                    except Exception:
+                        self.events.put(('ollama_error', 'Falha ao configurar Ollama. Tente novamente.'))
+                    continue
                 if isinstance(command, ConnectRequest):
                     from core.connection import connect
                     from utils.http_client import FetchError
@@ -158,7 +178,7 @@ class DesktopApp:
         window.title('Configuração — SAZABI')
         window.configure(bg=C['surface'])
         width = min(510, self.root.winfo_screenwidth()-40)
-        window.geometry(f'{width}x660')
+        window.geometry(f'{width}x710')
         window.minsize(400, 600)
         window.transient(self.root)
         from ui.window_chrome import dark_titlebar
@@ -181,6 +201,7 @@ class DesktopApp:
         self.connect_button.configure(state='disabled' if self.busy or self.failed else 'normal')
         wrapping_label(body, 'Deixe vazio para verificar a chave já configurada. A chave fica no .env local, fora do histórico e do Git.', self.fonts, 'small').pack(fill='x', pady=(0, 16))
         wrapping_label(body, 'Automações: execução sob demanda. Nenhum contato é enviado automaticamente.', self.fonts).pack(fill='x', pady=(0, 16))
+        self.action_button(body, 'IA local (Ollama)', self.open_ollama, navigation=True, width=185).pack(anchor='w', pady=(0, 12))
         motion = tk.Checkbutton(body, text='Reduzir animações', variable=self.reduced_motion,
             bg=C['surface'], fg=C['text'], selectcolor=C['raised'], activebackground=C['surface'],
             activeforeground=C['text'], font=self.fonts['body'], highlightcolor=C['focus'],
@@ -209,6 +230,54 @@ class DesktopApp:
         self.connection_status.set('Validando a chave na Tavily…')
         self.worker.commands.put(ConnectRequest(key))
 
+    def open_ollama(self):
+        import tkinter as tk
+        from tkinter import ttk
+        from ui.components import wrapping_label
+        from ui.tokens import COLORS as C
+        if getattr(self, 'ollama_window', None) and self.ollama_window.winfo_exists():
+            self.ollama_window.lift()
+            return
+        if self.settings_window and self.settings_window.winfo_exists():
+            self.settings_window.destroy()
+        window = self.ollama_window = tk.Toplevel(self.root)
+        window.title('IA local — Ollama')
+        window.configure(bg=C['surface'])
+        window.geometry('510x480')
+        window.transient(self.root)
+        body = tk.Frame(window, bg=C['surface'])
+        body.pack(fill='both', expand=True, padx=24, pady=24)
+        wrapping_label(body, 'Interpretação local das evidências', self.fonts, 'heading', 'text').pack(fill='x')
+        wrapping_label(body, 'Instale o Ollama em ollama.com/download e baixe um modelo de texto local. Mantenha o Ollama aberto e clique em Atualizar modelos.', self.fonts).pack(fill='x', pady=12)
+        self.ollama_status = tk.StringVar(value='Modelo atual: ' + (self.config.ollama_model if self.config.ai_provider == 'ollama' else 'IA desativada'))
+        status = wrapping_label(body, '', self.fonts)
+        status.configure(textvariable=self.ollama_status)
+        status.pack(fill='x', pady=10)
+        self.ollama_model = ttk.Combobox(body, state='readonly', values=[])
+        self.ollama_model.pack(fill='x', pady=8)
+        self.ollama_controls = []
+        for text, action in [('Atualizar modelos', lambda: self.ollama_action('list')),
+                             ('Ativar modelo', lambda: self.ollama_action('activate')),
+                             ('Desativar IA', lambda: self.ollama_action('disable'))]:
+            button = self.action_button(body, text, action, navigation=True, width=190)
+            button.pack(anchor='w', pady=3)
+            self.ollama_controls.append(button)
+        wrapping_label(body, 'Depois, use /ai Nome da empresa na conversa. A IA lê evidências salvas e não altera o banco ou a pontuação.', self.fonts, 'small').pack(fill='x', pady=12)
+        window.bind('<Escape>', lambda e: window.destroy())
+        window.grab_set()
+        self.set_busy(self.busy)
+
+    def ollama_action(self, action):
+        if self.busy or self.failed or self.closing:
+            return
+        model = self.ollama_model.get() if action == 'activate' else ''
+        if action == 'activate' and not model:
+            self.ollama_status.set('Atualize a lista e selecione um modelo instalado.')
+            return
+        self.set_busy(True)
+        self.ollama_status.set('Consultando o Ollama local…')
+        self.worker.commands.put(OllamaRequest(action, model))
+
     def set_busy(self, value):
         self.busy = value
         disabled = value or self.paused or self.failed or self.closing
@@ -220,6 +289,9 @@ class DesktopApp:
         if not self.ready and not self.failed:
             state = 'OFFLINE'
         self.indicator.set(state)
+        if getattr(self, 'ollama_window', None) and self.ollama_window.winfo_exists():
+            for button in self.ollama_controls:
+                button.configure(state='disabled' if value or self.failed or self.closing else 'normal')
         if self.settings_window and self.settings_window.winfo_exists():
             self.pause_button.configure(state='disabled' if value or self.failed or self.closing else 'normal')
             self.connect_button.configure(state='disabled' if value or self.failed or self.closing else 'normal')
@@ -262,6 +334,16 @@ class DesktopApp:
                             self.status.set('O comando falhou. Consulte o log ou tente outra ação.')
                 elif kind == 'snapshot':
                     self.dashboard.update_snapshot(text)
+                elif kind.startswith('ollama_'):
+                    self.set_busy(False)
+                    if getattr(self, 'ollama_window', None) and self.ollama_window.winfo_exists():
+                        if kind == 'ollama_models':
+                            self.ollama_model.configure(values=text)
+                            self.ollama_model.set(self.config.ollama_model if self.config.ollama_model in text else text[0] if text else '')
+                            self.ollama_status.set(f'{len(text)} modelo(s) local(is) disponível(is).' if text else 'Nenhum modelo local. Baixe um pelo Ollama e atualize a lista.')
+                        else:
+                            self.ollama_status.set(text)
+                    self.status.set('Lista de modelos atualizada.' if kind == 'ollama_models' else text)
                 elif kind in ('connected', 'connection_error'):
                     self.set_busy(False)
                     self.status.set(text)

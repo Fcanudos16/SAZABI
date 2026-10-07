@@ -55,6 +55,10 @@ Telegram: configure `TELEGRAM_BOT_TOKEN` e `TELEGRAM_ALLOWED_USER_IDS`, depois e
 
 IA local: configure `AI_PROVIDER=ollama`, `OLLAMA_MODEL` e disponibilize Ollama em `127.0.0.1:11434`. `/ai Nome` interpreta trechos, sem alterar evidências ou score. IA em nuvem não faz parte desta versão.
 
+Também pode configurar pela janela **Configuração → IA local (Ollama)**: liste modelos instalados, selecione e ative. O SAZABI consulta `/api/tags` e `/api/show` antes de ativar; modelos remotos e modelos sem capacidade de geração de texto são recusados. Ativação não baixa nem carrega um modelo. `/api/chat` executa a interpretação somente quando você pede `/ai` e existem evidências com fonte.
+
+Respostas incompletas, vazias, excessivas ou com chamadas de ferramentas são rejeitadas. O texto gerado é apresentado como interpretação não validada e não é incorporado ao histórico de evidências. Em falha, os relatórios determinísticos continuam disponíveis. Referências: [modelos instalados](https://docs.ollama.com/api/tags) e [chat](https://docs.ollama.com/api/chat).
+
 ## Verificação
 
 `python -m pytest -q` executa os testes offline depois de instalar `requirements.txt`. Como alternativa de ambiente, instale em `.test-deps` e rode `python run_tests.py`.

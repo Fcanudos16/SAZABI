@@ -68,8 +68,8 @@ class SazabiAgent:
         import re
         if re.search(r'\btvly-[A-Za-z0-9_-]+', text):
             return 'Use o campo protegido em Configuração para informar a chave Tavily. Ela não foi salva na conversa.'
-        if text.strip().startswith('/ai '):
-            return self._ai_summary(text.strip()[4:])
+        if text.strip() == '/ai' or text.strip().startswith('/ai '):
+            return self._ai_summary(text.strip()[3:].strip())
         self.memory.log_turn("user", text)
         try:
             reply = self._dispatch(route(text), text)
@@ -81,7 +81,7 @@ class SazabiAgent:
 
     def _ai_summary(self, target):
         if self.config.mock or self.config.ai_provider != 'ollama':
-            return 'IA desativada. Use AI_PROVIDER=ollama fora do modo mock.'
+            return 'IA desativada. Abra Configuração → IA local (Ollama), selecione um modelo instalado e ative.'
         profile, error = self._resolve_company(target)
         if error:
             return error
@@ -89,6 +89,8 @@ class SazabiAgent:
             from analysis.ai_provider import OllamaProvider
             text = OllamaProvider(self.config.ollama_model).summarize(self.sources.list_for_company(profile.id))
             return 'Interpretação por IA (não validada; não altera dados nem prioridade):\n' + text
+        except ValueError as error:
+            return 'Interpretação indisponível: ' + str(error)
         except Exception:
             return 'IA local indisponível. Os relatórios determinísticos continuam disponíveis.'
 

@@ -146,13 +146,13 @@ def test_ollama_uses_bounded_evidence_and_has_no_database_access():
     from database.models import Observation
     conn = Mock()
     conn.getresponse.return_value.status = 200
-    conn.getresponse.return_value.read.return_value = b'{"message":{"content":"Resumo"}}'
+    conn.getresponse.return_value.read.side_effect = [b'{"details":{"family":"test"}}', b'{"done":true,"done_reason":"stop","message":{"content":"Resumo"}}']
     with patch('analysis.ai_provider.http.client.HTTPConnection', return_value=conn):
         assert OllamaProvider('local').summarize([Observation('x' * 900, 'site', 'https://example.org')] * 20) == 'Resumo'
     payload = json.loads(conn.request.call_args.args[2])
     evidence = json.loads(payload['messages'][1]['content'])
     assert len(evidence) == 8 and len(evidence[0]['text']) == 600
-    conn.close.assert_called_once()
+    assert conn.close.call_count == 2
 
 
 def test_http_get_retries_are_bounded_and_post_is_not_retried():

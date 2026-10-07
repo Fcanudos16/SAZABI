@@ -137,6 +137,21 @@ def run(mock=False):
         if '--screenshots' in sys.argv:
             screenshot(app.settings_window, Path('data/desktop-previews/settings.png'))
         app.settings_window.destroy()
+        app.open_ollama()
+        tick()
+        with patch('analysis.ai_provider.list_models', return_value=['test-local:1']):
+            app.ollama_action('list')
+            wait()
+        assert app.ollama_model.get() == 'test-local:1'
+        with patch.dict(os.environ), patch('analysis.ai_provider.OllamaProvider.check_model'):
+            app.ollama_action('activate')
+            wait()
+            assert app.config.ai_provider == 'ollama'
+            assert 'ativada' in app.ollama_status.get()
+            app.ollama_action('disable')
+            wait()
+            assert app.config.ai_provider == 'none'
+        app.ollama_window.destroy()
         root.geometry('480x740')
         tick()
         assert app.compact and not app.sidebar.winfo_manager()

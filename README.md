@@ -79,6 +79,16 @@ python main.py --backup
 
 `services.yaml` define os serviços oferecidos pela sua software house. IA não é necessária para a pesquisa e a análise por regras. Telegram e Ollama são opcionais; veja [OPERACAO.md](OPERACAO.md).
 
+### Interpretação com Ollama local
+
+Instale e abra o [Ollama](https://ollama.com/download), com um modelo de conversação baixado para seu computador. No SAZABI, abra **Configuração → IA local (Ollama) → Atualizar modelos**, selecione um modelo e clique em **Ativar modelo**. A escolha é salva no `.env` e passa a valer sem reiniciar. **Desativar IA** mantém a pesquisa e os relatórios por regras disponíveis.
+
+Depois de investigar uma empresa, envie `/ai Nome da empresa`, ou `/ai` para a empresa selecionada anteriormente. O modelo recebe até oito trechos com URL e data, e produz uma interpretação separada em fatos, hipóteses e limitações. A resposta não é salva como evidência e não altera cadastro, score ou oportunidades. Não há acesso a ferramentas ou envio automático de contatos.
+
+A conexão é fixa em `127.0.0.1:11434`. Modelos de nuvem são recusados; não exige chave de API para a IA local. Se o serviço não estiver disponível, a configuração orienta a abrir o Ollama ou executar `ollama serve`. A geração aguarda até 120 segundos por operação de rede; o primeiro carregamento depende do hardware e do modelo.
+
+Diagnóstico sem baixar modelos: `python tests/ollama_local_check.py`. A validação da configuração verifica a presença e o tipo do modelo; a primeira execução de `/ai` verifica a geração efetiva.
+
 ## Testes e limites
 
 ```powershell
