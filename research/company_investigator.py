@@ -33,15 +33,21 @@ class CompanyInvestigator:
         if not refresh and self.is_fresh(profile):
             log.info("Cache usado para %s", profile.name)
             return InvestigationResult(list(stored or []), True)
-        collected = list(profile.observations)
+        collected = [] if profile.investigated else list(profile.observations)
+        current_errors = []
         for source in self.sources:
             try:
+                if refresh and hasattr(source, 'pages'):
+                    source.pages.clear()
                 collected.extend(source.fetch_observations(profile))
-            except Exception:
-                log.exception("Fonte %s indisponível", source.name)
-                self.errors.append(source.name)
+            except Exception as error:
+                from utils.http_client import FetchError
+                detail = str(error) if isinstance(error, FetchError) else 'Coleta indisponível.'
+                log.warning('Fonte %s: %s', source.name, detail)
+                current_errors.append(source.name + ': ' + detail)
+        self.errors.extend(current_errors)
         now, seen, observations = now_iso(), set(), []
-        if self.errors and not collected and stored:
+        if current_errors and not collected and stored:
             return InvestigationResult(list(stored), True)
         for o in collected:
             if (o.text, o.url) in seen:

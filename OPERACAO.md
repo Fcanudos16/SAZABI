@@ -1,69 +1,66 @@
 # Operação do SAZABI
 
-## Execução
+## Primeira execução
 
-Janela local: `python desktop.py` ou `python desktop.py --mock`. Requer Tkinter/Tcl no Python instalado.
-Nenhuma porta web é aberta. A internet só é usada por funcionalidades externas, como pesquisa real.
-Configure `SEARCH_API_KEY` com uma chave **Tavily** no `.env`; chaves antigas do Brave não são compatíveis.
-A busca usa `basic` e `auto_parameters=false`. O limite de resultados não limita o gasto mensal;
-mantenha o plano gratuito e confira o consumo no painel da Tavily.
+Execute `python main.py` ou `iniciar_sazabi.cmd`. Abra Configuração, informe sua chave Tavily e clique em Salvar e conectar. A chave é validada por `GET /usage` antes de substituir a configuração anterior. Uma falha de validação preserva a chave anterior.
 
-Python 3.9+. Runtime sem dependências externas. Copie `.env.example` para `.env`.
+A chave fica no `.env` local, não na conversa nem no banco. O arquivo é gravado por substituição atômica, preservando as outras variáveis. O campo é mascarado e limpo ao enviar. Proteja o acesso à sua pasta: o `.env` é texto local, não um cofre criptografado.
 
-```bash
-python main.py --mock
-python main.py --mock -c "procure clínicas em Campinas"
-python main.py --mock --backup
-```
+O programa abre sem chave. Configurar Tavily não exige OpenAI, Ollama ou Telegram. A chave antiga do Brave não é compatível.
 
-Pesquisa real: configure `SEARCH_API_KEY` de uma conta Tavily Search e execute sem `--mock`.
-Telegram: configure `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS=123456789,987654321` e execute `python main.py --telegram`.
-Somente chats privados de IDs autorizados chegam ao agente. Outros usuários, grupos e bots são ignorados antes do acesso ao banco.
-O bot devolve relatórios consolidados. A base comercial é compartilhada entre autorizados; confirmações e contexto da última empresa são separados por usuário.
-Mensagens antigas na fila são descartadas na inicialização. O processo precisa estar aberto para receber comandos; não monitora empresas periodicamente.
+## Pesquisa e evidências
 
-## IA local opcional
+Tavily retorna até `SEARCH_LIMIT` páginas por consulta (padrão 5, máximo 20), usando busca basic sem seleção automática de parâmetros. Esse limite não é teto mensal de gastos. O plano e o saldo são controlados na sua conta Tavily.
 
-Use `AI_PROVIDER=ollama`, `OLLAMA_MODEL` com um modelo já instalado e Ollama disponível em `127.0.0.1:11434`.
-`/ai Nome da empresa` interpreta no máximo oito trechos de evidência, sem executar ações ou alterar dados, status e score.
-A resposta é identificada como interpretação não validada. Falha da IA não impede relatórios determinísticos.
-IA em nuvem não foi implementada. Em mock, IA e Telegram ficam bloqueados.
+Cada página descoberta é armazenada com URL, título, trecho retornado, data, situação de identificação e motivo da limitação. Um trecho Tavily não verificado não gera sinais, hipóteses ou cadastro automaticamente.
 
-## Evidências e prioridade
+A identificação usa JSON-LD de organização/empresa no domínio consultado ou `og:site_name` corroborado pelo texto do site. Diretórios e redes sociais conhecidos ficam como páginas pendentes. A identificação é uma declaração do site; não certifica CNPJ, atividade, porte ou aderência ao pedido.
 
-Hipóteses exigem sinais com texto, fonte e URL. WhatsApp não comprova trabalho manual e site não identificado não comprova ausência de site.
-O score de 0 a 100 representa prioridade de investigação, nunca probabilidade de venda. Repetir o mesmo tipo de sinal não soma pontos.
-Serviços vêm de `services.yaml`. A equipe decide se entra em contato; o sistema não envia mensagens para empresas.
+A investigação consulta a página encontrada e até duas páginas internas de contato, apresentação ou unidades quando vinculadas. Somente páginas efetivamente lidas aparecem como evidência. Falhas nas páginas extras não invalidam as observações da página principal. Páginas renderizadas apenas por JavaScript podem não fornecer texto.
 
-## Pesquisa real: limites explícitos
+Campos ausentes ficam sem preenchimento. Hipóteses exigem sinais com fonte, texto e URL. WhatsApp não comprova trabalho manual; ausência de site identificado não comprova ausência de site. O score representa prioridade de investigação. A equipe decide sobre contato.
 
-- Tavily descobre até `SEARCH_LIMIT` candidatos por consulta (padrão 5, máximo 20).
-- Cadastros exigem JSON-LD de organização/empresa com nome e URL no domínio consultado. Títulos e snippets não viram cadastros.
-- Localização só é preenchida com informação da fonte. Segmento, porte e aderência aos filtros exigem revisão; não são inventados a partir do pedido.
-- A investigação lê a página inicial. Não percorre automaticamente notícias, redes sociais e páginas internas.
-- HTTPS público com IP validado e fixado na conexão, sem redirects, login, cookies, CAPTCHA ou contorno de bloqueios.
-- `robots.txt` precisa estar disponível e permitir acesso. Ausência, erro ou redirecionamento impede a coleta. Respeita `Crawl-delay`, com mínimo de dois segundos por domínio nas páginas.
-- HTTP 403/429 suspende o domínio na sessão. GET tem até três tentativas com backoff; POST não é repetido automaticamente.
-- Timeout e limite de resposta. Sites dinâmicos ou sem dados estruturados podem não ser identificados.
-- Robots não substitui termos de uso; selecione fontes cuja coleta seja permitida.
+## Rede e falhas
 
-## Banco, backups e recuperação
+- URLs públicas HTTP/HTTPS, sem credenciais embutidas e nas portas padrão. HTTP só é permitido na coleta pública sem tokens; a API usa HTTPS.
+- IPs privados/reservados são bloqueados. O IP validado é fixado na conexão; HTTPS mantém a verificação TLS do hostname.
+- Até quatro etapas de redirecionamento, com nova validação em cada destino. Tokens da API nunca seguem redirecionamentos.
+- `robots.txt` é respeitado; 404/410 permitem coleta. Proibição, falha de rede, 403 e 5xx impedem acesso. Intervalo mínimo de dois segundos por domínio; `Crawl-delay` superior a 15 segundos adia a coleta.
+- GET tem até três tentativas; POST não é repetido automaticamente. Timeout padrão de 15 segundos por operação de socket.
+- Respostas comprimidas gzip/deflate são decodificadas com limite de tamanho também após descompressão. Respostas maiores que 1 MB são recusadas.
+- 401 informa chave inválida; 429 informa limite de requisições; 432/433 informam limite do plano/conta. A fonte é suspensa na sessão após bloqueio. Aguarde o limite do provedor e reconecte pela configuração para tentar novamente.
+- Erros de API ficam no relatório, histórico e situação da execução. Páginas bloqueadas permanecem consultáveis como descobertas pendentes.
 
-SQLite usa WAL, chaves estrangeiras e espera de cinco segundos por locks. Backup íntegro em `data/backups/` ao iniciar em modo real.
-Backup manual: `python main.py --backup`. Não há exclusão automática de backups.
-Para recuperar: pare o processo e use `--db caminho/do/backup.db`; preserve uma cópia do backup antes de continuar a escrever nele.
-Na instalação local original, `sazabi_before_v1.zip` preserva o código anterior às alterações; esse arquivo não é distribuído no repositório. `.env`, bancos, logs e backups ficam fora do Git.
-O mock padrão usa `data/sazabi_mock.db`. Não aponte `--db` ou `DATABASE_PATH` para dados reais durante testes fictícios.
+Robots não substitui termos de uso. Não há login, cookies autenticados, quebra de CAPTCHA ou contorno de restrições.
 
-## Testes
+## Interface local
 
-```bash
-python -m pip install -r requirements.txt
-python -m pytest -q
-```
+Painel e conversa usam o mesmo banco. `ONLINE` significa que o agente local está pronto, não que a chave foi validada. A configuração mostra o resultado da validação. A janela continua respondendo durante a coleta; fechar aguarda a operação em andamento para encerrar o banco com segurança.
 
-Opcionalmente, instale dependências de teste em `.test-deps` com `python -m pip install --target .test-deps -r requirements.txt` e execute `python run_tests.py`.
-Verificação offline inclui fluxo mock, persistência, hipóteses, score, autorização, robots, transporte e leitura de backup íntegro.
-Tavily, Telegram e Ollama ainda requerem teste real com credenciais/serviço local. O código não foi declarado validado em produção.
+Pausa bloqueia novos comandos da janela. Redução de animações e pausa valem para a sessão atual. O aplicativo não mantém rotina de prospecção contínua.
 
-Contratos consultados: [Tavily](https://docs.tavily.com/documentation/api-reference/endpoint/search), [Telegram](https://core.telegram.org/bots/api), [Ollama](https://docs.ollama.com/api/chat).
+## Banco e recuperação
+
+SQLite usa WAL e chaves estrangeiras. Ao iniciar com banco em arquivo, é criado backup verificado em `data/backups/`. `python main.py --backup` cria outro backup. Não há exclusão automática.
+
+Para recuperação, pare o aplicativo, preserve uma cópia do backup e execute `python main.py --db caminho/do/backup.db`. O schema é atualizado ao abrir bases anteriores, sem apagar as empresas existentes.
+
+Dados de demonstração das versões antigas continuam apenas no antigo `data/sazabi_mock.db`, caso ele exista; esse arquivo não é aberto por padrão. Os testes atuais injetam dados sintéticos explicitamente e usam bases isoladas. Nunca aponte testes para seu banco real.
+
+## Recursos opcionais
+
+Terminal: `python main.py --cli`. Execução única: `python main.py -c "/status"`.
+
+Telegram: configure `TELEGRAM_BOT_TOKEN` e `TELEGRAM_ALLOWED_USER_IDS`, depois execute `python main.py --telegram`. Somente chats privados autorizados acessam o agente. A base é compartilhada entre autorizados; o contexto e as confirmações são separados por usuário. Não envia mensagens comerciais automaticamente.
+
+IA local: configure `AI_PROVIDER=ollama`, `OLLAMA_MODEL` e disponibilize Ollama em `127.0.0.1:11434`. `/ai Nome` interpreta trechos, sem alterar evidências ou score. IA em nuvem não faz parte desta versão.
+
+## Verificação
+
+`python -m pytest -q` executa os testes offline depois de instalar `requirements.txt`. Como alternativa de ambiente, instale em `.test-deps` e rode `python run_tests.py`.
+
+`python tests/native_desktop_check.py` verifica a janela real com bases em memória, incluindo configuração com respostas controladas. `--screenshots` captura somente as próprias janelas de teste em `data/desktop-previews/`.
+
+`python tests/public_network_check.py` realiza GETs públicos sem credenciais e sem gravar empresas. Busca Tavily autenticada, Telegram e Ollama precisam de validação com sua conta/serviço. Não confunda teste offline com validação em produção.
+
+Contratos: [Tavily Search](https://docs.tavily.com/documentation/api-reference/endpoint/search), [Tavily Usage](https://docs.tavily.com/documentation/api-reference/endpoint/usage), [robots.txt](https://www.rfc-editor.org/rfc/rfc9309.html).

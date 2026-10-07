@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from core.bootstrap import build_agent
+from tests.factories import build_agent
 from core.config import Config
 from database.models import SearchCriteria
 from research.base import CompanySource
@@ -136,12 +136,12 @@ def test_failing_source_is_reported_not_fatal(notifier):
 
     agent = build_agent(Config(database_path=":memory:"), notifier=notifier, sources=[Broken()])
     reply = agent.handle("procure clínicas em São Paulo")
-    assert "fontes com erro" in reply and "quebrada" in reply and "0 encontradas" in reply
+    assert "Pesquisa não concluída" in reply and "quebrada" in reply
 
 
 def test_no_sources_configured_is_honest(notifier):
     agent = build_agent(Config(database_path=":memory:"), notifier=notifier)
-    assert "Nenhuma fonte" in agent.handle("procure clínicas em São Paulo")
+    assert "Pesquisa não iniciada" in agent.handle("procure clínicas em São Paulo")
     assert notifier.messages == []
 
 

@@ -46,9 +46,11 @@ class CompanyFinder:
     def __init__(self, sources: Sequence[CompanySource]):
         self.sources = list(sources)
         self.errors: List[str] = []
+        self.hits = []
 
     def find(self, criteria: SearchCriteria) -> List[RawCompany]:
         self.errors = []
+        self.hits = []
         if not self.sources:
             log.warning("Nenhuma fonte configurada")
             return []
@@ -58,17 +60,22 @@ class CompanyFinder:
                 found = source.search(criteria)
                 log.info("%d empresas encontradas em %s", len(found), source.name)
                 results.extend(found)
-            except Exception:
-                log.exception("Fonte %s indisponível", source.name)
-                self.errors.append(source.name)
+                self.hits.extend(getattr(source, 'last_hits', []))
+            except Exception as error:
+                from utils.http_client import FetchError
+                detail = str(error) if isinstance(error, FetchError) else 'Falha ao consultar a fonte.'
+                log.warning('Fonte %s: %s', source.name, detail)
+                self.errors.append(source.name + ': ' + detail)
         return results
 
     def lookup(self, name: str) -> Optional[RawCompany]:
+        self.errors = []
         for source in self.sources:
             try:
                 raw = source.lookup(name)
                 if raw:
                     return raw
-            except Exception:
-                log.exception("Fonte %s indisponível", source.name)
+            except Exception as error:
+                from utils.http_client import FetchError
+                self.errors.append(str(error) if isinstance(error, FetchError) else 'Falha ao consultar a fonte.')
         return None

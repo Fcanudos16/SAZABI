@@ -12,13 +12,12 @@ from notifications.notifier import ConsoleNotifier, Notifier
 from research.base import CompanySource
 from research.company_finder import CompanyFinder
 from research.company_investigator import CompanyInvestigator
-from research.mock_source import MockSource
 
 
 def build_agent(config: Config, notifier: Optional[Notifier] = None,
                 sources: Optional[Sequence[CompanySource]] = None) -> SazabiAgent:
     if sources is None:
-        sources = [MockSource()] if config.mock else []
+        sources = []
         if not config.mock and config.search_api_key:
             from research.web_source import TavilySearch, WebSource
             sources = [WebSource(TavilySearch(config.search_api_key, config.search_limit))]

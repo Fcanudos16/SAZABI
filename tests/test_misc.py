@@ -2,7 +2,7 @@ import logging
 
 from core.config import DEFAULT_SERVICES, load_config, read_env_file, read_services
 from notifications.notifier import ConsoleNotifier, NullNotifier
-from research.mock_source import MockSource
+from tests.mock_source import MockSource
 from database.models import SearchCriteria
 from utils.logger import RedactFilter
 

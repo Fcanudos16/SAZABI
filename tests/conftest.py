@@ -1,6 +1,6 @@
 import pytest
 
-from core.bootstrap import build_agent
+from tests.factories import build_agent
 from core.config import Config
 from notifications.notifier import Notifier
 

@@ -16,6 +16,7 @@ MOCK_DB = "data/sazabi_mock.db"
 
 @dataclass
 class Config:
+    env_file: str = '.env'
     env: str = "development"
     database_path: str = DEFAULT_DB
     mock: bool = False
@@ -81,12 +82,16 @@ def load_config(env_file: str = ".env", services_file: str = "services.yaml",
         ttl = float(get("CACHE_TTL_HOURS", "24"))
     except ValueError:
         ttl = 24.0
-    return Config(env=get("SAZABI_ENV", "development"), database_path=database, mock=mock,
+    try:
+        search_limit = min(20, max(1, int(get('SEARCH_LIMIT', '5'))))
+    except ValueError:
+        search_limit = 5
+    return Config(env_file=str(Path(env_file).resolve()), env=get("SAZABI_ENV", "development"), database_path=database, mock=mock,
                   cache_ttl_hours=ttl, log_level=get("LOG_LEVEL", "INFO"),
                   log_file=get("LOG_FILE", "logs/sazabi.log"), default_region=get("DEFAULT_REGION"),
                   services=read_services(services_file),
                   search_api_key=get('SEARCH_API_KEY', ''),
-                  search_limit=min(20, max(1, int(get('SEARCH_LIMIT', '5')))),
+                  search_limit=search_limit,
                   telegram_token=get('TELEGRAM_BOT_TOKEN', ''),
                   telegram_allowed_ids=tuple(int(x.strip()) for x in get('TELEGRAM_ALLOWED_USER_IDS', '').split(',') if x.strip()),
                   ai_provider=get('AI_PROVIDER', 'none'), ollama_model=get('OLLAMA_MODEL', ''))

@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS research_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_runs_started ON research_runs(started_at);
 
+CREATE TABLE IF NOT EXISTS discovery_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES research_runs(id) ON DELETE CASCADE,
+    title TEXT NOT NULL, url TEXT NOT NULL, snippet TEXT NOT NULL,
+    retrieved_at TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_discovery_run ON discovery_results(run_id);
+
 CREATE TABLE IF NOT EXISTS run_companies (
     run_id INTEGER NOT NULL REFERENCES research_runs(id) ON DELETE CASCADE,
     company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -111,6 +119,11 @@ class Database:
         self.conn.execute("PRAGMA busy_timeout = 5000")
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
+        columns = {row['name'] for row in self.conn.execute('PRAGMA table_info(research_runs)')}
+        if 'status' not in columns:
+            self.conn.execute("ALTER TABLE research_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'legacy'")
+        if 'error_message' not in columns:
+            self.conn.execute("ALTER TABLE research_runs ADD COLUMN error_message TEXT NOT NULL DEFAULT ''")
         self.conn.commit()
 
     def execute(self, sql: str, params: Iterable = ()) -> sqlite3.Cursor:

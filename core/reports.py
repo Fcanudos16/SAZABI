@@ -80,16 +80,16 @@ def format_company_report(profile: CompanyProfile, observations: Sequence[Observ
 
 def format_search_report(run: ResearchRun, criteria: SearchCriteria, ranked: Sequence[Entry],
                          errors: Sequence[str], no_sources: bool, mock: bool) -> str:
-    lines = ["Pesquisa concluída.", "", "Critérios:", _bullets(criteria.describe() or ["Sem filtros"]), ""]
+    lines = ["Pesquisa concluída com limitações." if errors else "Pesquisa concluída.", "", "Critérios:", _bullets(criteria.describe() or ["Sem filtros"]), ""]
     if no_sources:
-        lines.append("Nenhuma fonte está configurada. Rode com --mock para usar dados fictícios.")
+        lines.append("Configure sua chave Tavily na janela Configuração ou em SEARCH_API_KEY no .env.")
         return "\n".join(lines)
     lines += ["Resultados:", _bullets([
         _pl(run.found, "encontrada nas fontes", "encontradas nas fontes"),
         _pl(run.duplicates, "duplicada removida", "duplicadas removidas"),
         _pl(run.new_count, "nova", "novas"), _pl(run.known_count, "já conhecida", "já conhecidas"),
         _pl(run.ignored_count, "ignorada (não reapresentada)", "ignoradas (não reapresentadas)"),
-        _pl(run.with_data, "investigada com dados suficientes", "investigadas com dados suficientes"),
+        _pl(run.with_data, "investigada com observações públicas", "investigadas com observações públicas"),
         _pl(run.signals_count, "sinal detectado", "sinais detectados"),
         _pl(run.opportunities, "oportunidade potencial", "oportunidades potenciais")])]
     if errors:
@@ -99,6 +99,8 @@ def format_search_report(run: ResearchRun, criteria: SearchCriteria, ranked: Seq
         for i, (p, level, n) in enumerate(ranked[:5], 1):
             best = f"melhor hipótese: {level_label(level)}" if level and level != "insuficiente" else "evidência insuficiente"
             lines.append(f"{i}. {p.name} — {p.segment or NA} — {p.location} ({_pl(n, 'sinal', 'sinais')}; {best}; prioridade {opportunity_score(p.signals)}/100)")
+            if p.website:
+                lines.append('   Site: ' + p.website)
             for signal in p.signals[:2]:
                 if signal.source_url:
                     lines.append(f'   Evidência: {signal.evidence[:200]} — {signal.source_url}')
@@ -110,6 +112,19 @@ def format_search_report(run: ResearchRun, criteria: SearchCriteria, ranked: Seq
     else:
         lines += ['', 'Candidatos encontrados; aderência a segmento e porte exige revisão. Prioridade não é probabilidade de venda.']
     return "\n".join(lines)
+
+
+def format_discovery(hits):
+    pending = [hit for hit in hits if hit['status'] == 'pending']
+    if not pending:
+        return ''
+    lines = ['', '', f'Páginas reais encontradas, pendentes de identificação ({len(pending)}):']
+    for hit in pending:
+        lines += [f"• {hit['title']}", f"  {hit['url']}",
+                  f"  Trecho retornado pela Tavily (não verificado): {hit['snippet'][:500]}",
+                  f"  Limitação: {hit['reason']}"]
+    lines += ['Estas páginas não contam como empresas qualificadas. Para tentar um site oficial: /investigate <URL>.']
+    return '\n'.join(lines)
 
 
 def format_company_list(title: str, entries: Sequence[Entry]) -> str:
@@ -130,6 +145,7 @@ def format_history(runs: Sequence[ResearchRun]) -> str:
     for r in runs:
         blocks.append("\n".join([
             f"{fmt_date(r.started_at)}", f"Pesquisa: {r.query}",
+            'Situação: ' + {'completed': 'concluída', 'partial': 'parcial', 'failed': 'falhou', 'running': 'sem conclusão', 'legacy': 'registro anterior'}.get(r.status, r.status) + (' — ' + r.error_message if r.error_message else ''),
             f"Encontradas: {r.found} | Duplicadas: {r.duplicates} | Novas: {r.new_count} | Já conhecidas: {r.known_count}",
             f"Investigadas: {r.investigated} | Sinais: {r.signals_count} | Oportunidades potenciais: {r.opportunities}"]))
     return "\n\n".join(blocks)

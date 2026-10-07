@@ -6,7 +6,7 @@ import pytest
 
 from analysis.opportunity_analyzer import OpportunityAnalyzer
 from analysis.scoring import opportunity_score
-from core.bootstrap import build_agent
+from tests.factories import build_agent
 from core.config import Config
 from core.memory import Memory
 from database.database import Database
@@ -115,8 +115,9 @@ def test_web_extracts_attributed_company_and_respects_robots():
     result = WebSource(provider, client).search(SearchCriteria(city='Campinas'))
     assert result[0].city == 'Campinas' and result[0].observations[0].retrieved_at
     client.request.side_effect = ['User-agent: *\nDisallow: /']
-    with pytest.raises(FetchError):
-        WebSource(provider, client).search(SearchCriteria())
+    source = WebSource(provider, client)
+    assert source.search(SearchCriteria()) == []
+    assert 'robots.txt' in source.last_hits[0]['reason']
 
 
 def test_tavily_limits_results_and_keeps_key_in_header():
@@ -165,18 +166,3 @@ def test_http_get_retries_are_bounded_and_post_is_not_retried():
         with pytest.raises(FetchError):
             HttpClient(interval=0).request('https://example.org/', {'text': 'message'})
         assert conn.request.call_count == 1
-
-
-def test_real_cli_mock_search_persists_across_processes(tmp_path):
-    import subprocess
-    import sys
-    db = str(tmp_path / 'mock.db')
-    def run(command):
-        result = subprocess.run([sys.executable, 'main.py', '--mock', '--db', db, '-c', command],
-                                capture_output=True, encoding='utf-8', timeout=30)
-        assert result.returncode == 0, result.stderr
-        assert 'erro interno' not in result.stdout
-        return result.stdout
-    assert 'Pesquisa concluída' in run('procure clínicas em Campinas')
-    assert 'Pesquisas realizadas: 1' in run('/status')
-    assert 'Campinas' in run('/results')

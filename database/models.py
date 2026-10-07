@@ -150,3 +150,5 @@ class ResearchRun:
     with_data: int = 0
     signals_count: int = 0
     opportunities: int = 0
+    status: str = 'running'
+    error_message: str = ''

@@ -1,152 +1,104 @@
-# SAZABI V1 — olheiro digital da software house
+# SAZABI — inteligência comercial local
 
-Bot pessoal de inteligência comercial: pesquisa empresas em fontes públicas, investiga uma a uma,
-detecta **sinais**, gera **hipóteses** de oportunidade e guarda tudo em SQLite. Não é SaaS, site nem CRM.
-A equipe decide quem contatar; o SAZABI só apresenta informação, sempre com fonte.
+Aplicativo desktop em Python que pesquisa páginas públicas pela **Tavily**, identifica empresas a partir dos próprios sites e organiza evidências e possíveis oportunidades em SQLite. A interface é nativa, em Tkinter: não abre navegador, servidor ou porta web.
 
-**Estado atual:** pipeline local, pesquisa Tavily, Telegram privado, score, backup e interpretação opcional via Ollama implementados.
-Testes offline passam; APIs reais ainda exigem validação com credenciais. Consulte [operação e limites](OPERACAO.md).
+**O uso normal não carrega empresas fictícias.** A base começa vazia. Dados sintéticos existem apenas em `tests/`, para testes isolados; o antigo comando `--mock` foi removido.
 
-## Instalação e execução
+## Abrir e configurar
 
-### Janela desktop local
-
-```powershell
-python desktop.py --mock   # demonstração sem APIs
-python desktop.py          # dados reais; configure a chave Tavily no .env
-```
-
-A interface usa Tkinter e abre uma janela nativa, sem navegador, servidor ou porta web.
-Tem campo de comandos e atalhos para resultados, oportunidades, histórico, status e ajuda.
-A janela permanece responsiva durante pesquisas. Ao fechar, aguarda a operação atual e fecha o banco.
-No instalador oficial do Python para Windows, mantenha o componente Tcl/Tk habilitado.
-
-Requer Python 3.9+. Sem dependências de runtime (só biblioteca padrão).
-
-No PowerShell:
+Requer **Python 3.9+ com Tcl/Tk**. Não precisa instalar bibliotecas de runtime.
 
 ```powershell
 git clone https://github.com/Fcanudos16/SAZABI.git
 cd SAZABI
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-Copy-Item .env.example .env
+python main.py
 ```
 
-Se a ativação do ambiente estiver bloqueada, use `.\.venv\Scripts\python.exe` no lugar de `python` nos comandos abaixo.
+No Windows, também pode abrir `iniciar_sazabi.cmd`. Se houver um ambiente `.venv`, o iniciador usa esse Python.
 
-```bash
-python main.py --mock            # conversa no terminal com dados fictícios
-python main.py --mock -c "procure clínicas em São Paulo"   # uma mensagem e sai
-pip install -r requirements.txt  # só para os testes
-python -m pytest                 # testes offline
-```
+1. Abra **Configuração** na janela.
+2. Cole sua chave obtida no [painel da Tavily](https://app.tavily.com/).
+3. Clique em **Salvar e conectar**. O SAZABI valida a chave no endpoint de uso da conta, salva no `.env` local e habilita a pesquisa sem reiniciar.
+4. Abra **Nova pesquisa** e envie, por exemplo, `procure clínicas em Campinas`.
 
-Com a configuração padrão, o modo mock usa `data/sazabi_mock.db`. Não aponte `--db` ou `DATABASE_PATH` para um banco real durante testes fictícios. Logs em `logs/sazabi.log`.
+Sem chave, a janela, o histórico, a ajuda e os dados já salvos continuam disponíveis. Pesquisas novas mostram a configuração necessária. Nenhum resultado de demonstração é usado como substituto.
 
-### Pesquisa real e Telegram
+A validação da chave não executa pesquisa. Cada busca usa Tavily Search com `search_depth=basic` e `auto_parameters=false`. Limites, saldo e cobrança são os da sua conta Tavily; consulte o painel do provedor.
 
-Preencha as variáveis necessárias no `.env` e execute:
+Alternativamente, copie `.env.example` para `.env` e preencha `SEARCH_API_KEY`. Variáveis do ambiente têm prioridade na inicialização; salvar pela janela atualiza também a configuração do processo atual. Se você definiu uma chave global no Windows, mantenha-a consistente com o `.env` nas próximas execuções.
+
+## O que a pesquisa entrega
+
+- Empresas com identidade publicada em JSON-LD ou metadados do próprio site, acompanhadas de URL e observações. Identidade publicada não equivale a validação cadastral independente.
+- Páginas retornadas pela Tavily que não puderam ser identificadas: título, URL, trecho do provedor e motivo da limitação. São persistidas em `/results` sem virar empresas ou oportunidades fictícias.
+- Sinais e hipóteses baseados em trechos consultados. Campos sem informação ficam como **Não identificado**. Cidade, porte e segmento não são preenchidos a partir do pedido.
+- Histórico com situação da execução, inclusive falhas de API, e painel com contagens reais do banco.
+
+O score indica prioridade de investigação, não probabilidade de venda. Hipóteses não comprovam que uma empresa precisa de software. O aplicativo não envia mensagens às empresas.
+
+## Comandos
+
+| Ação | Exemplo |
+|---|---|
+| Pesquisar | `/search clínicas em Campinas` |
+| Investigar empresa | `/investigate Nome da empresa` |
+| Investigar site | `/investigate https://site-oficial.example` — substitua pelo site real |
+| Atualizar investigação | `/investigate Nome da empresa --refresh` |
+| Ver dados armazenados | `/company Nome da empresa` |
+| Rever resultados | `/results`, `/results hoje` |
+| Ver hipóteses qualificadas | `/interesting` |
+| Histórico | `/history` |
+| Guardar ou ignorar | `/save Nome`, `/ignore Nome` |
+| Apagar com confirmação | `/forget Nome` |
+| Região padrão | `/set region Campinas` |
+| Ajuda / situação | `/help`, `/status` |
+
+Também aceita pedidos como `procure restaurantes em São Paulo`. Se faltar cidade e não houver região padrão, pergunta uma vez.
 
 ```powershell
-python main.py               # terminal com pesquisa Tavily, quando configurada
-python main.py --telegram    # bot privado com IDs autorizados
-python main.py --backup      # backup SQLite verificado
+python main.py --cli
+python main.py -c "/search clínicas em Campinas"
+python main.py --backup
 ```
+
+`main.py` encontra `.env`, serviços, banco e logs junto ao projeto mesmo quando iniciado de outra pasta. Caminhos personalizados são aceitos por `--env`, `--services` e `--db`.
+
+## Configuração opcional
 
 | Variável | Uso / padrão |
 |---|---|
-| `SEARCH_API_KEY` | Chave Tavily Search; sem ela, pesquisa real fica desativada |
-| `SEARCH_LIMIT` | Resultados por consulta: 5, máximo 20 |
-| `TELEGRAM_BOT_TOKEN` | Token do bot; necessário para `--telegram` |
-| `TELEGRAM_ALLOWED_USER_IDS` | IDs numéricos autorizados, separados por vírgula; obrigatório para o bot |
-| `AI_PROVIDER` | `none` (padrão) ou `ollama` |
-| `OLLAMA_MODEL` | Nome de um modelo instalado no Ollama local |
+| `SEARCH_API_KEY` | Chave Tavily, exigida para pesquisa online |
+| `SEARCH_LIMIT` | Páginas por consulta: 5, máximo 20 |
 | `DATABASE_PATH` | `data/sazabi.db` |
-| `CACHE_TTL_HOURS` | Validade da investigação em cache: 24 horas |
-| `DEFAULT_REGION` | Cidade padrão opcional |
+| `CACHE_TTL_HOURS` | Cache de investigação: 24 horas |
+| `DEFAULT_REGION` | Cidade padrão |
 | `LOG_LEVEL` / `LOG_FILE` | `INFO` / `logs/sazabi.log` |
+| `TELEGRAM_BOT_TOKEN` | Token para o modo opcional `--telegram` |
+| `TELEGRAM_ALLOWED_USER_IDS` | IDs autorizados para o Telegram |
+| `AI_PROVIDER` / `OLLAMA_MODEL` | `none` por padrão; `ollama` habilita `/ai Nome` |
 
-Ollama usa o endereço local fixo `127.0.0.1:11434`. A chave Tavily não é necessária para consultar empresas já armazenadas.
-Não coloque tokens em código, comandos versionados ou issues. Veja os detalhes em [OPERACAO.md](OPERACAO.md).
+`services.yaml` define os serviços oferecidos pela sua software house. IA não é necessária para a pesquisa e a análise por regras. Telegram e Ollama são opcionais; veja [OPERACAO.md](OPERACAO.md).
 
-## Comandos (ou fale naturalmente)
+## Testes e limites
 
-| Natural | Comando |
-|---|---|
-| "procure pequenas clínicas em São Paulo" | `/search clínicas em Campinas` |
-| "faça uma pesquisa silenciosa por oficinas em Campinas" | (só envia o resumo) |
-| "investigue a Oficina Silva" | `/investigate Oficina Silva` |
-| "atualize a investigação da Oficina Silva" | `/investigate Oficina Silva --refresh` |
-| "o que você encontrou hoje?" | `/results [hoje\|ontem]` |
-| "quais empresas parecem interessantes?" | `/interesting` |
-| "o que eu pesquisei ontem?" | `/history [hoje\|ontem]` |
-| "guarde / ignore essa empresa" | `/save` `/ignore` `/forget` (apagar pede confirmação) |
-| — | `/company <nome>`, `/set region <cidade>`, `/status`, `/help` |
-| Interpretação por IA local | `/ai <nome da empresa>` |
-
-Se faltar a região, o SAZABI pergunta uma vez. `/set region Campinas` define uma região padrão.
-
-## Arquitetura
-
-```
-CLI (main.py) ──► SazabiAgent (core/agent.py) ◄── Telegram (allowlist)
-                      │
- router → finder → normalização → deduplicação → investigator → signal_detector → opportunity_analyzer → SQLite
+```powershell
+python -m pip install -r requirements.txt
+python -m pytest -q
+python tests/native_desktop_check.py
+python tests/public_network_check.py
 ```
 
-- `core/` agente, roteador de comandos, memória, config, relatórios
-- `research/` fontes (`CompanySource`), finder, investigator (com cache), `mock_source.py`
-- `analysis/` sinais, hipóteses e score determinísticos; interpretação opcional via Ollama separada
-- `database/` schema, modelos, repositórios · `notifications/` notifiers · `utils/` normalização, dedup, logs
+Os testes de integração usam respostas controladas e bases temporárias. O teste de rede separado consulta uma página pública real e verifica que a Tavily recusa acesso sem autenticação. Ele **não valida uma busca autenticada**. Para essa verificação, conecte sua chave na janela e realize uma pesquisa.
 
-Regra central: **fato** (observação + fonte + URL) → **inferência** (sinal) → **hipótese** (com nível de
-evidência). Campo sem dado fica "Não identificado"; nada é inventado.
+Sites podem bloquear coleta, exigir JavaScript ou não publicar identidade suficiente. Redirecionamentos são limitados e cada destino passa pela validação de endereço público; `robots.txt` é respeitado. Não há contorno de CAPTCHA/login. Detalhes em [OPERACAO.md](OPERACAO.md).
 
-## Configuração
+## Organização
 
-- `.env` (copie `.env.example`): `DATABASE_PATH`, `CACHE_TTL_HOURS`, `LOG_LEVEL`, `DEFAULT_REGION`...
-- `services.yaml`: serviços da software house. Hipóteses só são geradas para o que estiver listado.
+- `main.py`, `desktop.py`, `ui/`: execução, janela e componentes; [DESIGN.md](DESIGN.md) documenta o visual.
+- `core/`: configuração, conexão Tavily, comandos, relatórios e memória.
+- `research/`: busca, coleta pública, normalização e investigação.
+- `analysis/`: sinais, hipóteses, score e interpretação opcional.
+- `database/`: SQLite e repositórios.
+- `tests/`: testes e dados sintéticos isolados.
 
-## Como estender
-
-- **Nova fonte:** implemente `CompanySource` (`search`, `fetch_observations`, `lookup`) em `research/` e
-  passe-a em `core/bootstrap.py`. Toda fonte real deve ter timeout, rate limit, retry com backoff e
-  respeitar robots.txt/termos de uso.
-- **Novo sinal:** adicione o tipo em `database/models.py` e uma `SignalRule` em `analysis/signal_detector.py`.
-- **Nova hipótese:** adicione uma `HypothesisRule` em `analysis/opportunity_analyzer.py`.
-- **Nova notificação:** implemente `Notifier.send()` em `notifications/`.
-
-## Próximas etapas
-
-Configure as credenciais conforme [OPERACAO.md](OPERACAO.md) e valide a pesquisa e o bot com suas contas.
-IA em nuvem e monitoramento comercial 24/7 ficam fora desta versão.
-
-## Validação e limites
-
-A suíte inclui testes offline de execução do terminal em processos separados, persistência, acesso ao Telegram,
-bloqueio de destinos privados, HTTP 429 e recuperação de backup. Rode `python -m pytest -q` após instalar `requirements.txt`.
-Tavily, Telegram e Ollama foram testados com respostas simuladas; o funcionamento real depende das credenciais e do serviço local.
-
-A coleta exige dados estruturados públicos e permissão em `robots.txt`; sites dinâmicos, redirects e páginas sem esses dados podem ser omitidos.
-Redes sociais e notícias não são investigadas automaticamente. Segmento, porte e aderência aos filtros precisam de revisão humana.
-O score representa prioridade de investigação, nunca chance de venda. Nenhum contato automático com empresas é realizado.
-
-## Estrutura
-
-```text
-main.py             Entrada do terminal e Telegram
-desktop.py          Janela desktop Tkinter, sem servidor web
-core/               Configuração, comandos, memória e relatórios
-research/           Descoberta, fontes públicas/mock e investigação
-analysis/           Evidências, sinais, hipóteses, score e Ollama
-database/           Modelos, schema SQLite e repositórios
-notifications/      Console e Telegram
-utils/              HTTP, normalização, deduplicação, logs e datas
-tests/              Testes offline
-services.yaml       Serviços oferecidos pela software house
-.env.example        Modelo de configuração sem credenciais
-OPERACAO.md         Guia de operação, segurança e recuperação
-```
-
-Dados, logs, ambientes virtuais, dependências locais de teste e backups não fazem parte do repositório.
+Credenciais, banco, logs e backups ficam fora do Git. Para distribuir o projeto, use o repositório; não copie sua pasta `.env` ou `data/` para uma instalação nova.

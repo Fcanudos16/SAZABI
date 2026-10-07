@@ -91,6 +91,11 @@ def parse_criteria(text: str) -> SearchCriteria:
         if re.search(pattern, n):
             criteria.segment = value
             break
+    if not criteria.segment:
+        segment = re.split(r'\bem\s+', text, maxsplit=1, flags=re.I)[0]
+        segment = re.sub(r'^(?:procure|buscar|busque|pesquise|encontre|quero|preciso de)\s+', '', segment, flags=re.I).strip()
+        if segment:
+            criteria.segment = segment[:150]
     for pattern, value in SIZES:
         if re.search(pattern, n):
             criteria.size = value

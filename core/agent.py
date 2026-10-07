@@ -65,6 +65,9 @@ class SazabiAgent:
 
     # ------------------------------------------------------------------ entrada
     def handle(self, text: str) -> str:
+        import re
+        if re.search(r'\btvly-[A-Za-z0-9_-]+', text):
+            return 'Use o campo protegido em Configuração para informar a chave Tavily. Ela não foi salva na conversa.'
         if text.strip().startswith('/ai '):
             return self._ai_summary(text.strip()[4:])
         self.memory.log_turn("user", text)
@@ -150,10 +153,15 @@ class SazabiAgent:
         return self._run_search(criteria)
 
     def _run_search(self, criteria: SearchCriteria) -> str:
+        if not self.finder.sources:
+            return 'Pesquisa não iniciada. Abra Configuração e conecte sua chave Tavily, ou preencha SEARCH_API_KEY no .env.'
         run = self.runs.create(criteria)
         log.info("Pesquisa iniciada: %s", run.query)
         self.finder.errors, self.investigator.errors = [], []
         raws = self.finder.find(criteria)
+        for hit in self.finder.hits:
+            self.db.execute('INSERT INTO discovery_results (run_id,title,url,snippet,retrieved_at,status,reason) VALUES (?,?,?,?,?,?,?)',
+                            (run.id, *(hit[key] for key in ('title', 'url', 'snippet', 'retrieved_at', 'status', 'reason'))))
         run.found = len(raws)
         log.info("%d empresas encontradas", run.found)
 
@@ -187,13 +195,18 @@ class SazabiAgent:
             ranked.append((profile, best, len(outcome.signals)))
 
         ranked.sort(key=lambda e: (-opportunity_score(e[0].signals), -(rank(e[1]) if e[1] else 0), e[0].name))
+        errors = self.finder.errors + self.investigator.errors
+        run.status = 'failed' if self.finder.errors and not raws and not self.finder.hits else 'partial' if errors else 'completed'
+        run.error_message = '; '.join(errors)
         self.runs.finish(run)
         self.memory.set_last_run(run.id)
         log.info("%d empresas investigadas, %d sinais detectados", run.investigated, run.signals_count)
-        errors = self.finder.errors + self.investigator.errors
         reply = reports.format_search_report(run, criteria, ranked, errors,
                                              no_sources=not self.finder.sources, mock=self.config.mock)
-        if self.finder.sources:
+        if errors and not raws and not self.finder.hits:
+            reply = 'Pesquisa não concluída.\n' + '\n'.join(errors)
+        reply += reports.format_discovery(self.finder.hits)
+        if self.finder.sources and not (errors and not raws):
             self._notify_run(run, criteria, ranked)
         return reply
 
@@ -267,6 +280,8 @@ class SazabiAgent:
                     return existing, None
                 self.companies.add(profile)
                 return profile, None
+            if self.finder.errors:
+                return None, 'Investigação não concluída: ' + '; '.join(self.finder.errors)
         return None, f'Não identifiquei a empresa "{target}" no histórico nem nas fontes disponíveis.'
 
     def _cmd_investigate(self, target: Optional[str], refresh: bool) -> str:
@@ -364,7 +379,9 @@ class SazabiAgent:
         label = {"today": "de hoje", "yesterday": "de ontem"}.get(period, f'da última pesquisa ("{runs[0].query}")')
         if profiles:
             self.memory.set_last_company(profiles[0].id) if len(profiles) == 1 else None
-        return reports.format_company_list(f"Empresas encontradas {label}:", self._entries(profiles))
+        hits = [dict(hit) for run in runs for hit in self.db.query('SELECT * FROM discovery_results WHERE run_id=?', (run.id,))]
+        failures = '\n'.join(r.error_message for r in runs if r.error_message)
+        return reports.format_company_list(f"Empresas encontradas {label}:", self._entries(profiles)) + reports.format_discovery(hits) + ('\nFalhas registradas: ' + failures if failures else '')
 
     def _cmd_interesting(self) -> str:
         pairs = self.hypotheses.companies_with_min_level("moderado")

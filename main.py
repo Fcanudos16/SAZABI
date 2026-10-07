@@ -1,8 +1,9 @@
-"""SAZABI — bot pessoal de inteligência comercial. Uso: python main.py --mock"""
+"""SAZABI — bot pessoal de inteligência comercial. Uso: python main.py"""
 from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from core.bootstrap import build_agent
 from core.command_router import route
@@ -16,25 +17,31 @@ Modo: {mode}. Digite /help para ver os comandos, ou "sair" para encerrar.
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="SAZABI V1")
-    parser.add_argument("--mock", action="store_true", help="usa dados fictícios, sem APIs externas")
     parser.add_argument('--telegram', action='store_true', help='bot privado com allowlist obrigatória')
+    parser.add_argument('--cli', action='store_true', help='usa terminal em vez da janela desktop')
     parser.add_argument('--backup', action='store_true', help='cria backup SQLite verificado e sai')
-    parser.add_argument("--env", default=".env", help="caminho do arquivo .env")
-    parser.add_argument("--services", default="services.yaml", help="arquivo com os serviços da software house")
+    base = Path(__file__).resolve().parent
+    parser.add_argument("--env", default=str(base / '.env'), help="caminho do arquivo .env")
+    parser.add_argument("--services", default=str(base / 'services.yaml'), help="arquivo com os serviços da software house")
     parser.add_argument("--db", default=None, help="caminho do banco SQLite")
     parser.add_argument("--verbose", action="store_true", help="mostra logs também no terminal")
     parser.add_argument("-c", "--command", default=None, help="executa uma única mensagem e sai")
     args = parser.parse_args(argv)
-    if args.mock and args.telegram:
-        parser.error('--mock não permite Telegram nem chamadas externas')
 
     for stream in (sys.stdout, sys.stderr):                 # emojis/acentos no Windows
         reconfigure = getattr(stream, "reconfigure", None)
         if callable(reconfigure):
             reconfigure(encoding="utf-8", errors="replace")
 
-    config = load_config(args.env, args.services, mock=args.mock, db_path=args.db)
+    config = load_config(args.env, args.services, db_path=args.db)
+    if config.database_path != ':memory:' and not Path(config.database_path).is_absolute():
+        config.database_path = str(base / config.database_path)
+    if not Path(config.log_file).is_absolute():
+        config.log_file = str(base / config.log_file)
     setup_logging(config.log_level, config.log_file, console=args.verbose)
+    if not (args.cli or args.telegram or args.backup or args.command is not None):
+        from desktop import run_desktop
+        return run_desktop(config)
     agent = build_agent(config)
 
     if args.backup:

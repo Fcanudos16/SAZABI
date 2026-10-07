@@ -217,7 +217,7 @@ class HypothesisRepository:
 
 
 _RUN_COLS = ["found", "duplicates", "new_count", "known_count", "ignored_count", "investigated",
-             "with_data", "signals_count", "opportunities"]
+             "with_data", "signals_count", "opportunities", "status", "error_message"]
 
 
 def _to_run(r) -> ResearchRun:
@@ -235,8 +235,8 @@ class RunRepository:
         started = started_at or now_iso()
         query = criteria.raw_query or "; ".join(criteria.describe())
         cur = self.db.execute(
-            "INSERT INTO research_runs (query, segment, city, state, size, need, silent, started_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO research_runs (query, segment, city, state, size, need, silent, started_at, status) "
+            "VALUES (?,?,?,?,?,?,?,?,'running')",
             (query, criteria.segment, criteria.city, criteria.state, criteria.size, criteria.need,
              int(criteria.silent), started))
         return ResearchRun(id=cur.lastrowid, query=query, started_at=started, segment=criteria.segment,
@@ -244,6 +244,8 @@ class RunRepository:
                            need=criteria.need, silent=criteria.silent)
 
     def finish(self, run: ResearchRun) -> None:
+        if run.status == 'running':
+            run.status = 'completed'
         run.finished_at = run.finished_at or now_iso()
         sets = ", ".join(f"{c}=?" for c in _RUN_COLS)
         self.db.execute(f"UPDATE research_runs SET finished_at=?, {sets} WHERE id=?",
