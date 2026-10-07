@@ -12,7 +12,7 @@ from core.memory import Memory
 from database.database import Database
 from database.models import CompanyProfile, Signal, SearchCriteria
 from notifications.telegram import TelegramAPI, TelegramBot
-from research.web_source import WebSource, BraveSearch
+from research.web_source import WebSource, TavilySearch
 from research.base import SearchResult
 from utils.http_client import HttpClient, FetchError, public_address
 
@@ -71,7 +71,7 @@ def test_allowlist_required_and_telegram_chunking():
 
 
 def test_mock_never_builds_network_providers():
-    with patch('research.web_source.BraveSearch', side_effect=AssertionError('network')):
+    with patch('research.web_source.TavilySearch', side_effect=AssertionError('network')):
         agent = build_agent(Config(mock=True, database_path=':memory:', search_api_key='secret'))
         assert 'mock' in agent.handle('/status')
         assert 'desativada' in agent.handle('/ai X')
@@ -119,13 +119,16 @@ def test_web_extracts_attributed_company_and_respects_robots():
         WebSource(provider, client).search(SearchCriteria())
 
 
-def test_brave_limits_results_and_keeps_key_in_header():
+def test_tavily_limits_results_and_keeps_key_in_header():
     client = Mock()
-    client.json.return_value = {'web': {'results': [{'title': 'X', 'url': 'https://example.org'}]}}
-    assert BraveSearch('secret', client=client).search('clínicas')[0].title == 'X'
+    client.json.return_value = {'results': [{'title': 'X', 'url': 'https://example.org'}]}
+    assert TavilySearch('secret', client=client).search('clínicas')[0].title == 'X'
     args, kwargs = client.json.call_args
     assert 'secret' not in args[0]
-    assert kwargs['headers']['X-Subscription-Token'] == 'secret'
+    assert kwargs['headers']['Authorization'] == 'Bearer secret'
+    assert kwargs['payload']['search_depth'] == 'basic'
+    assert kwargs['payload']['auto_parameters'] is False
+    assert kwargs['payload']['include_answer'] is False
 
 
 def test_explicit_negation_does_not_become_positive_signal():

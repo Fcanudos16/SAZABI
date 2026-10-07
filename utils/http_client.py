@@ -55,7 +55,7 @@ class HttpClient:
                 conn.request('POST' if body is not None else 'GET',
                              parts.path + ('?' + parts.query if parts.query else ''), body, request_headers)
                 response = conn.getresponse()
-                if response.status in (403, 429):
+                if response.status in (401, 403, 429, 432, 433):
                     self.blocked.add(host)
                     raise FetchError('Fonte bloqueou ou limitou o acesso; sessão suspensa')
                 if response.status >= 500:

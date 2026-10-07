@@ -2,6 +2,12 @@
 
 ## Execução
 
+Janela local: `python desktop.py` ou `python desktop.py --mock`. Requer Tkinter/Tcl no Python instalado.
+Nenhuma porta web é aberta. A internet só é usada por funcionalidades externas, como pesquisa real.
+Configure `SEARCH_API_KEY` com uma chave **Tavily** no `.env`; chaves antigas do Brave não são compatíveis.
+A busca usa `basic` e `auto_parameters=false`. O limite de resultados não limita o gasto mensal;
+mantenha o plano gratuito e confira o consumo no painel da Tavily.
+
 Python 3.9+. Runtime sem dependências externas. Copie `.env.example` para `.env`.
 
 ```bash
@@ -10,7 +16,7 @@ python main.py --mock -c "procure clínicas em Campinas"
 python main.py --mock --backup
 ```
 
-Pesquisa real: configure `SEARCH_API_KEY` de uma conta Brave Search e execute sem `--mock`.
+Pesquisa real: configure `SEARCH_API_KEY` de uma conta Tavily Search e execute sem `--mock`.
 Telegram: configure `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS=123456789,987654321` e execute `python main.py --telegram`.
 Somente chats privados de IDs autorizados chegam ao agente. Outros usuários, grupos e bots são ignorados antes do acesso ao banco.
 O bot devolve relatórios consolidados. A base comercial é compartilhada entre autorizados; confirmações e contexto da última empresa são separados por usuário.
@@ -31,7 +37,7 @@ Serviços vêm de `services.yaml`. A equipe decide se entra em contato; o sistem
 
 ## Pesquisa real: limites explícitos
 
-- Brave descobre até `SEARCH_LIMIT` candidatos por consulta (padrão 5, máximo 20).
+- Tavily descobre até `SEARCH_LIMIT` candidatos por consulta (padrão 5, máximo 20).
 - Cadastros exigem JSON-LD de organização/empresa com nome e URL no domínio consultado. Títulos e snippets não viram cadastros.
 - Localização só é preenchida com informação da fonte. Segmento, porte e aderência aos filtros exigem revisão; não são inventados a partir do pedido.
 - A investigação lê a página inicial. Não percorre automaticamente notícias, redes sociais e páginas internas.
@@ -58,6 +64,6 @@ python -m pytest -q
 
 Opcionalmente, instale dependências de teste em `.test-deps` com `python -m pip install --target .test-deps -r requirements.txt` e execute `python run_tests.py`.
 Verificação offline inclui fluxo mock, persistência, hipóteses, score, autorização, robots, transporte e leitura de backup íntegro.
-Brave, Telegram e Ollama ainda requerem teste real com credenciais/serviço local. O código não foi declarado validado em produção.
+Tavily, Telegram e Ollama ainda requerem teste real com credenciais/serviço local. O código não foi declarado validado em produção.
 
-Contratos consultados: [Brave](https://brave.com/search/api/), [Telegram](https://core.telegram.org/bots/api), [Ollama](https://docs.ollama.com/api/chat).
+Contratos consultados: [Tavily](https://docs.tavily.com/documentation/api-reference/endpoint/search), [Telegram](https://core.telegram.org/bots/api), [Ollama](https://docs.ollama.com/api/chat).

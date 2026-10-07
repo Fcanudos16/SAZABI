@@ -1,7 +1,7 @@
-"""Brave discovery + conservative structured company extraction from public pages."""
+"""Tavily discovery + conservative structured company extraction from public pages."""
 import json
 from html.parser import HTMLParser
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 
 from database.models import RawCompany, Observation
@@ -11,18 +11,22 @@ from utils.timeutils import now_iso
 from utils.normalization import normalize_text
 
 
-class BraveSearch(SearchProvider):
+class TavilySearch(SearchProvider):
     def __init__(self, key, limit=5, client=None):
         self.key, self.limit = key, min(max(limit, 1), 20)
         self.client = client or HttpClient()
 
     def search(self, query):
-        data = self.client.json('https://api.search.brave.com/res/v1/web/search?' +
-                                urlencode({'q': query, 'count': self.limit, 'country': 'br'}),
-                                headers={'X-Subscription-Token': self.key})
-        return [SearchResult(r['title'], r['url'], r.get('description', ''))
-                for r in data.get('web', {}).get('results', [])[:self.limit]
-                if isinstance(r.get('url'), str) and isinstance(r.get('title'), str)]
+        data = self.client.json('https://api.tavily.com/search',
+            payload={'query': query, 'max_results': self.limit, 'search_depth': 'basic',
+                     'topic': 'general', 'auto_parameters': False, 'include_answer': False,
+                     'include_raw_content': False, 'include_images': False},
+            headers={'Authorization': 'Bearer ' + self.key})
+        if not isinstance(data, dict) or not isinstance(data.get('results'), list):
+            raise FetchError('Resposta Tavily inválida')
+        return [SearchResult(r['title'], r['url'], r.get('content', '') or '')
+                for r in data['results'][:self.limit]
+                if isinstance(r, dict) and isinstance(r.get('url'), str) and isinstance(r.get('title'), str)]
 
 
 class PageParser(HTMLParser):
@@ -71,7 +75,7 @@ def organizations(document):
 
 
 class WebSource(CompanySource):
-    name = 'Web pública (Brave + dados estruturados)'
+    name = 'Web pública (Tavily + dados estruturados)'
 
     def __init__(self, search, client=None):
         self.provider, self.client = search, client or HttpClient(interval=2)

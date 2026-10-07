@@ -70,7 +70,7 @@ def main(argv=None) -> int:
 
     print(BANNER.format(mode="mock (dados fictícios)" if config.mock else "real"))
     if not config.mock and not config.search_api_key:
-        print('Pesquisa real desativada: configure SEARCH_API_KEY (Brave).\n')
+        print('Pesquisa real desativada: configure SEARCH_API_KEY (Tavily).\n')
     while True:
         try:
             text = input("você> ").strip()

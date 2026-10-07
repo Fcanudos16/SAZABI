@@ -4,10 +4,22 @@ Bot pessoal de inteligência comercial: pesquisa empresas em fontes públicas, i
 detecta **sinais**, gera **hipóteses** de oportunidade e guarda tudo em SQLite. Não é SaaS, site nem CRM.
 A equipe decide quem contatar; o SAZABI só apresenta informação, sempre com fonte.
 
-**Estado atual:** pipeline local, pesquisa Brave, Telegram privado, score, backup e interpretação opcional via Ollama implementados.
+**Estado atual:** pipeline local, pesquisa Tavily, Telegram privado, score, backup e interpretação opcional via Ollama implementados.
 Testes offline passam; APIs reais ainda exigem validação com credenciais. Consulte [operação e limites](OPERACAO.md).
 
 ## Instalação e execução
+
+### Janela desktop local
+
+```powershell
+python desktop.py --mock   # demonstração sem APIs
+python desktop.py          # dados reais; configure a chave Tavily no .env
+```
+
+A interface usa Tkinter e abre uma janela nativa, sem navegador, servidor ou porta web.
+Tem campo de comandos e atalhos para resultados, oportunidades, histórico, status e ajuda.
+A janela permanece responsiva durante pesquisas. Ao fechar, aguarda a operação atual e fecha o banco.
+No instalador oficial do Python para Windows, mantenha o componente Tcl/Tk habilitado.
 
 Requer Python 3.9+. Sem dependências de runtime (só biblioteca padrão).
 
@@ -37,14 +49,14 @@ Com a configuração padrão, o modo mock usa `data/sazabi_mock.db`. Não aponte
 Preencha as variáveis necessárias no `.env` e execute:
 
 ```powershell
-python main.py               # terminal com pesquisa Brave, quando configurada
+python main.py               # terminal com pesquisa Tavily, quando configurada
 python main.py --telegram    # bot privado com IDs autorizados
 python main.py --backup      # backup SQLite verificado
 ```
 
 | Variável | Uso / padrão |
 |---|---|
-| `SEARCH_API_KEY` | Chave Brave Search; sem ela, pesquisa real fica desativada |
+| `SEARCH_API_KEY` | Chave Tavily Search; sem ela, pesquisa real fica desativada |
 | `SEARCH_LIMIT` | Resultados por consulta: 5, máximo 20 |
 | `TELEGRAM_BOT_TOKEN` | Token do bot; necessário para `--telegram` |
 | `TELEGRAM_ALLOWED_USER_IDS` | IDs numéricos autorizados, separados por vírgula; obrigatório para o bot |
@@ -55,7 +67,7 @@ python main.py --backup      # backup SQLite verificado
 | `DEFAULT_REGION` | Cidade padrão opcional |
 | `LOG_LEVEL` / `LOG_FILE` | `INFO` / `logs/sazabi.log` |
 
-Ollama usa o endereço local fixo `127.0.0.1:11434`. A chave Brave não é necessária para consultar empresas já armazenadas.
+Ollama usa o endereço local fixo `127.0.0.1:11434`. A chave Tavily não é necessária para consultar empresas já armazenadas.
 Não coloque tokens em código, comandos versionados ou issues. Veja os detalhes em [OPERACAO.md](OPERACAO.md).
 
 ## Comandos (ou fale naturalmente)
@@ -112,9 +124,9 @@ IA em nuvem e monitoramento comercial 24/7 ficam fora desta versão.
 
 ## Validação e limites
 
-A suíte tem 89 testes offline, incluindo execução do terminal em processos separados, persistência, acesso ao Telegram,
+A suíte inclui testes offline de execução do terminal em processos separados, persistência, acesso ao Telegram,
 bloqueio de destinos privados, HTTP 429 e recuperação de backup. Rode `python -m pytest -q` após instalar `requirements.txt`.
-Brave, Telegram e Ollama foram testados com respostas simuladas; o funcionamento real depende das credenciais e do serviço local.
+Tavily, Telegram e Ollama foram testados com respostas simuladas; o funcionamento real depende das credenciais e do serviço local.
 
 A coleta exige dados estruturados públicos e permissão em `robots.txt`; sites dinâmicos, redirects e páginas sem esses dados podem ser omitidos.
 Redes sociais e notícias não são investigadas automaticamente. Segmento, porte e aderência aos filtros precisam de revisão humana.
@@ -124,6 +136,7 @@ O score representa prioridade de investigação, nunca chance de venda. Nenhum c
 
 ```text
 main.py             Entrada do terminal e Telegram
+desktop.py          Janela desktop Tkinter, sem servidor web
 core/               Configuração, comandos, memória e relatórios
 research/           Descoberta, fontes públicas/mock e investigação
 analysis/           Evidências, sinais, hipóteses, score e Ollama

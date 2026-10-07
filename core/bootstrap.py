@@ -20,8 +20,8 @@ def build_agent(config: Config, notifier: Optional[Notifier] = None,
     if sources is None:
         sources = [MockSource()] if config.mock else []
         if not config.mock and config.search_api_key:
-            from research.web_source import BraveSearch, WebSource
-            sources = [WebSource(BraveSearch(config.search_api_key, config.search_limit))]
+            from research.web_source import TavilySearch, WebSource
+            sources = [WebSource(TavilySearch(config.search_api_key, config.search_limit))]
     return SazabiAgent(
         config=config, db=Database(config.database_path), finder=CompanyFinder(sources),
         investigator=CompanyInvestigator(sources, config.cache_ttl_hours), detector=SignalDetector(),
