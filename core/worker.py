@@ -104,5 +104,3 @@ class AgentWorker:
 
     def close(self):
         self.commands.put(None)
-
-
