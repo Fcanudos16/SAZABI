@@ -31,6 +31,7 @@ class CompanionApp:
         root.withdraw()
         self.busy, self.ready, self.failed, self.closing = True, False, False, False
         self.terminal, self.preferences, self.bubble = None, None, None
+        self.system_monitor = None
         self.menu, self.menu_action_job = None, None
         self.poll_job, self.idle_job = None, None
         self.response_job, self.found_until = None, 0
@@ -262,6 +263,13 @@ class CompanionApp:
                 command()
         self.menu_action_job = self.root.after_idle(run)
 
+    def open_system_monitor(self):
+        self.touch()
+        if self.system_monitor is None:
+            from ui.system_monitor import SystemMonitorWindow
+            self.system_monitor = SystemMonitorWindow(self)
+        self.system_monitor.show()
+
     def context_menu(self, event):
         self.touch()
         if self.menu is not None:
@@ -276,6 +284,7 @@ class CompanionApp:
         menu.add_command(label='Abrir / fechar terminal', command=lambda: self.menu_action(self.toggle_terminal))
         menu.add_command(label='Nova pesquisa', command=lambda: self.menu_action(self.open_search))
         menu.add_command(label='Configuração · Tavily / Ollama', command=lambda: self.menu_action(self.open_settings))
+        menu.add_command(label='Monitor do sistema', command=lambda: self.menu_action(self.open_system_monitor))
         menu.add_separator()
         menu.add_checkbutton(label='Sempre no topo', variable=self.always_on_top, command=self.topmost_changed)
         menu.add_checkbutton(label='Reduzir movimento', variable=self.reduced_motion, command=self._save)
@@ -295,7 +304,8 @@ class CompanionApp:
     def topmost_changed(self):
         self.root.attributes('-topmost', self.always_on_top.get())
         for window in (self.terminal.window if self.terminal else None,
-                       self.preferences.window if self.preferences else None, self.bubble):
+                       self.preferences.window if self.preferences else None, self.bubble,
+                       self.system_monitor.window if self.system_monitor else None):
             if window and window.winfo_exists():
                 window.attributes('-topmost', self.always_on_top.get())
         self._save()
@@ -442,6 +452,8 @@ class CompanionApp:
             return
         self._save()
         self.closing = True
+        if self.system_monitor:
+            self.system_monitor.close()
         self.transitions.finish()
         self.sleep_bubbles.clear()
         self.notifications.clear()
@@ -459,6 +471,8 @@ class CompanionApp:
 
     def _destroyed(self, event):
         if event.widget is self.root:
+            if self.system_monitor:
+                self.system_monitor.sampler.close()
             for job in (self.poll_job, self.idle_job, self.response_job, self.motion_job, self.life_job, self.menu_action_job,
                         self.transitions.job, self.notifications.job):
                 if job:

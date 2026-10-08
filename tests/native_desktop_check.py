@@ -289,9 +289,32 @@ def run(mock=False):
         choose('Nova pesquisa')
         assert app.terminal.visible and str(app.terminal.entry['state']) == 'disabled'
         app.set_busy(False)
+        choose('Monitor do sistema')
+        monitor = app.system_monitor
+        assert monitor.window.winfo_viewable()
+        deadline = time.monotonic()+8
+        while monitor.sample_count < 2 and time.monotonic() < deadline:
+            tick(.1)
+        assert monitor.sample_count >= 2, monitor.status.get()
+        assert 0 <= monitor.last_snapshot['cpu']['percent'] <= 100
+        assert monitor.last_snapshot['memory']['total'] > 0
+        assert monitor.last_snapshot['disk']['total'] > 0
+        assert monitor.close_button.winfo_rooty()+monitor.close_button.winfo_height() <= monitor.window.winfo_rooty()+monitor.window.winfo_height()
+        capture(monitor.window, 'system-monitor.png')
+        monitor.window.iconify()
+        tick(.3)
+        assert not monitor.running and not monitor.sampler.active
+        choose('Monitor do sistema')
+        assert app.system_monitor is monitor and monitor.running
+        monitor.hide()
+        tick(.2)
+        assert not monitor.sampler.active and monitor.job is None
+        choose('Monitor do sistema')
+        assert monitor.running
         choose('Sempre no topo')
         assert not bool(root.attributes('-topmost'))
         assert not bool(app.preferences.window.attributes('-topmost'))
+        assert not bool(monitor.window.attributes('-topmost'))
         choose('Sempre no topo')
         assert bool(root.attributes('-topmost'))
         choose('Reduzir movimento')
@@ -338,9 +361,11 @@ def run(mock=False):
             close_command.assert_called_once_with()
         app.close()
         assert app.closing
+        monitor.sampler.thread.join(timeout=3)
+        assert not monitor.sampler.thread.is_alive()
         app.worker.thread.join(timeout=5)
         assert not app.worker.thread.is_alive()
-        print('PASS: mascot, animations, sleep, task priority, native context menu and submenu, search/settings focus, minimized settings, terminal toggle, settings, shutdown')
+        print('PASS: mascot, animations, sleep, native menus, search/settings focus, real system metrics, monitor pause/resume, bounded layout, worker shutdown')
     finally:
         app.worker.close()
         app.worker.thread.join(timeout=5)

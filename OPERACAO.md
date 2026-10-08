@@ -53,6 +53,12 @@ A arte plana não contém camadas separadas de cabeça e torso. Não há inclina
 
 Posição e preferências são guardadas em `companion.json` ao lado do banco. Se um monitor for removido, a posição é limitada à área útil disponível na próxima abertura. Coordenadas de monitores negativos são tratadas por Win32; combinações de escalas DPI e monitores físicos precisam de validação no equipamento de destino.
 
+## Monitor do computador
+
+Use **Clique direito → Monitor do sistema**. Não exige chave de API nem Ollama. CPU, RAM, disco e tempo ligado são coletados localmente com `psutil`, a cada segundo, em uma thread separada da pesquisa e da interface. O disco é a raiz da unidade corrente. Informações de máquina são mostradas apenas nessa janela, sem envio ou persistência no SQLite.
+
+Fechar ou minimizar pausa novas leituras. Reabrir aguarda uma amostra nova e não cria outra thread. Sempre no topo também se aplica ao monitor. Ao encerrar SAZABI, o coletor recebe sinal de encerramento. Se faltar `psutil`, instale com `python -m pip install -r requirements.txt` usando o Python que inicia o aplicativo e reinicie. O restante do SAZABI continua acessível.
+
 ## Banco e recuperação
 
 SQLite usa WAL e chaves estrangeiras. Ao iniciar com banco em arquivo, é criado backup verificado em `data/backups/`. `python main.py --backup` cria outro backup. Não há exclusão automática.

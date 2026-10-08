@@ -78,6 +78,8 @@ Configuração é uma janela opcional separada, acessível pelo menu do mascote.
 | `ui/native.py` | regiões, não ativação, posição e área útil no Windows |
 | `ui/terminal.py` | terminal secundário e histórico visual limitado |
 | `ui/preferences.py` | conexões Tavily/Ollama sob demanda |
+| `system_monitor/` | coletores incorporados do System monitor e serviço local pausável |
+| `ui/system_monitor.py` | janela nativa de métricas reais, aberta pelo menu do mascote |
 
 O terminal mantém até 2.500 linhas em memória para limitar consumo; as pesquisas completas continuam no SQLite e podem ser consultadas com `/results`. A thread gráfica não acessa o banco. Nenhum texto do terminal é executado como comando do sistema operacional.
 

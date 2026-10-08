@@ -6,11 +6,12 @@ Mascote de desktop que pesquisa páginas públicas pela **Tavily**, identifica e
 
 ## Abrir e configurar
 
-O mascote requer **Windows e Python 3.9+ com Tcl/Tk**. Usa GDI+ e regiões nativas do Windows, sem bibliotecas extras de runtime. CLI e backend continuam independentes da camada visual.
+O mascote requer **Windows e Python 3.9+ com Tcl/Tk**. Usa GDI+ e regiões nativas do Windows. O monitor do computador usa `psutil`; CLI e backend continuam independentes da camada visual.
 
 ```powershell
 git clone https://github.com/Fcanudos16/SAZABI.git
 cd SAZABI
+python -m pip install -r requirements.txt
 python main.py
 ```
 
@@ -26,11 +27,17 @@ No Windows, abra `iniciar_sazabi.cmd` para iniciar com `pythonw`, sem manter um 
 - **Arraste** o personagem para movê-lo. Um arraste não abre o terminal.
 - **Clique** para abrir ou fechar o terminal preto e verde, próximo ao personagem (até 620 × 440 px).
 - **Escape, × ou clique fora** fecham apenas o terminal. A pesquisa continua em segundo plano.
-- **Clique direito** dá acesso a nova pesquisa, configuração, Sempre no topo, Reduzir movimento e Encerrar SAZABI.
+- **Clique direito** dá acesso a nova pesquisa, configuração, Monitor do sistema, Sempre no topo, Reduzir movimento e Encerrar SAZABI.
 - Ao terminar, a pose muda e um pequeno aviso aparece por 5,5 segundos. Os resultados não são abertos automaticamente e o foco de outro aplicativo é preservado.
 - A posição e as preferências do mascote ficam em `data/companion.json`, junto à pasta do banco configurado.
 
 As seis poses são vistas da mesma prancha JPEG, sem redimensionamento, recoloração, redesenho ou geração por IA. O arquivo original permanece intacto em `assets/sazabi/original.jpg`, verificado por SHA-256. O mapeamento das poses está em `assets/sazabi/states.json`. A transparência é aplicada à região da janela, preservando o branco dos olhos. Consulte [DESIGN.md](DESIGN.md).
+
+### Monitor do sistema
+
+**Clique direito no mascote → Monitor do sistema** abre uma janela nativa preta e verde com CPU, frequência disponível, RAM, disco da unidade atual, tempo ligado, sistema operacional, nome do computador, processador, arquitetura e núcleos. Integra os coletores do projeto System monitor fornecido pelo usuário.
+
+As leituras são reais e atualizadas a cada segundo, sem API ou envio de informações. Fechar ou minimizar pausa a coleta; reabrir reutiliza a mesma janela e o mesmo coletor. A primeira porcentagem de CPU aparece após formar uma amostra de aproximadamente um segundo. Falhas são indicadas como indisponíveis; não são substituídas por números fictícios. Sem `psutil`, o mascote continua funcionando e o monitor mostra a instrução de instalação.
 
 Sem chave, a janela, o histórico, a ajuda e os dados já salvos continuam disponíveis. Pesquisas novas mostram a configuração necessária. Nenhum resultado de demonstração é usado como substituto.
 

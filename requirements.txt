@@ -1,3 +1,4 @@
-# Sem dependências de runtime: o SAZABI V1 usa apenas a biblioteca padrão (Python 3.9+).
+# Monitor local de CPU, memória, disco e uptime:
+psutil>=5.9.0
 # Apenas para rodar os testes:
 pytest>=7
