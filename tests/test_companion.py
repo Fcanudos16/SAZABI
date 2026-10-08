@@ -34,6 +34,28 @@ def test_terminal_position_stays_in_each_monitor_work_area():
             assert area[1] <= py and py+440 <= area[3]
 
 
+def test_mask_removes_white_matted_colored_fringe_without_editing_rgb():
+    pixels = bytearray(bytes((130, 180, 190)) * 49)
+    for y in range(2, 5):
+        for x in range(2, 5):
+            i = (y*7+x)*3
+            pixels[i:i+3] = bytes((18, 30, 40))
+    pixels[72:75] = bytes((255, 255, 255))
+    original = bytes(pixels)
+    mask = foreground_mask(pixels, 7, 7)
+    assert not mask[8] and mask[16] and mask[24]
+    assert bytes(pixels) == original
+
+
+def test_motion_stays_bounded_and_celebration_settles():
+    from ui.motion import offset
+    for state in ('IDLE', 'ANALYZING', 'RESEARCHING', 'WORKING', 'FOUND', 'RESPONDING'):
+        samples = [offset(state, i/20) for i in range(101)]
+        assert len(set(samples)) > 1
+        assert all(abs(x) <= 2 and -7 <= y <= 0 for x, y in samples)
+    assert offset('FOUND', 1.3) == offset('RESPONDING', 1.3) == (0, 0)
+
+
 def test_real_pipeline_events_have_no_fabricated_success(agent):
     events = []
     agent.event_sink = lambda kind, data: events.append((kind, data))

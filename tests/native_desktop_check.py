@@ -100,6 +100,22 @@ def run(mock=False):
         assert root.overrideredirect()
         assert bool(root.attributes('-topmost'))
         assert app.state == 'IDLE' and len(app.atlas.images) == 6
+        anchor = (app.x, app.y)
+        app.hover(False)
+        app.reduced_motion.set(False)
+        positions = set()
+        for _ in range(15):
+            tick(.1)
+            positions.add(app.motion_offset)
+        assert len(positions) > 1, 'Idle animation must move the native window'
+        assert (app.x, app.y) == anchor, 'Animation must not drift the saved position'
+        app.hover(True)
+        held = app.motion_offset
+        tick(.3)
+        assert app.motion_offset == held, 'Hover must hold the mascot still for clicking'
+        app.reduced_motion.set(True)
+        assert app.motion_job is None and app.motion_offset == (0, 0)
+        app.hover(False)
         # Windows owns the exact shape: exterior pixels are not clickable, eyes are.
         user, gdi = native.api()
         gdi.CreateRectRgn.argtypes, gdi.CreateRectRgn.restype = [ctypes.c_int]*4, wintypes.HANDLE
@@ -187,7 +203,7 @@ def run(mock=False):
         app.close()
         app.worker.thread.join(timeout=5)
         assert not app.worker.thread.is_alive()
-        print('PASS: mascot, six poses, drag vs click, bounded terminal, background task, no focus theft, settings, shutdown')
+        print('PASS: mascot, animation, hover pause, reduced motion, six poses, drag vs click, bounded terminal, background task, no focus theft, settings, shutdown')
     finally:
         app.worker.close()
         app.worker.thread.join(timeout=5)

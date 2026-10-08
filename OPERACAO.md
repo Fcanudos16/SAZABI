@@ -43,7 +43,9 @@ O balão de conclusão dura 5,5 segundos ou até interação. Ele usa uma janela
 
 Para sair, use Clique direito → Encerrar SAZABI, ou `sair` no terminal. O processo aguarda a tarefa atual para fechar o SQLite com segurança; as requisições mantêm seus timeouts. A janela pequena não executa comandos de shell: todas as entradas passam pelo roteador existente.
 
-O mascote usa APIs Win32/GDI+. A máscara da janela exclui somente o fundo quase branco conectado ao exterior de cada recorte; olhos brancos continuam opacos. O JPEG não é regravado, os pixels coloridos não são retocados e nenhum sprite é gerado por IA. Bordas claras presentes na compressão JPEG original podem continuar visíveis. A implementação não oferece mascote nativo em Linux/macOS; nesses sistemas use `--cli`.
+O mascote usa APIs Win32/GDI+. A máscara da janela exclui o fundo claro e a franja do JPEG conectados ao exterior de cada recorte; olhos brancos continuam opacos. O JPEG não é regravado, os pixels coloridos não são retocados e nenhum sprite é gerado por IA. A implementação não oferece mascote nativo em Linux/macOS; nesses sistemas use `--cli`.
+
+O personagem flutua discretamente e muda o movimento conforme o estado de trabalho. Ele para sob o cursor para facilitar o clique. Clique direito → Reduzir movimento desativa as animações. A barra de rolagem do terminal acompanha o tema preto e verde.
 
 Posição e preferências são guardadas em `companion.json` ao lado do banco. Se um monitor for removido, a posição é limitada à área útil disponível na próxima abertura. Coordenadas de monitores negativos são tratadas por Win32; combinações de escalas DPI e monitores físicos precisam de validação no equipamento de destino.
 

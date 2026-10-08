@@ -11,6 +11,7 @@ from core.worker import AgentWorker
 from ui.sprites import SpriteAtlas
 from ui.terminal import ResultTerminal, BG, FG, FONT
 from ui import native
+from ui.motion import offset
 
 
 STATE_EVENTS = {
@@ -29,6 +30,8 @@ class CompanionApp:
         self.terminal, self.preferences, self.bubble = None, None, None
         self.poll_job, self.idle_job, self.bubble_job = None, None, None
         self.response_job, self.fade_job, self.found_until = None, None, 0
+        self.motion_job, self.motion_offset = None, (0, 0)
+        self.motion_started, self.hovered = time.monotonic(), False
         self.state, self.notice, self.operation_failed = 'IDLE', None, False
         self.state_history = ['IDLE']
         self.always_on_top = tk.BooleanVar(root, True)
@@ -52,6 +55,7 @@ class CompanionApp:
         if self.x == self.y == 0:
             self.x, self.y = area[2]-self.atlas.width-35, area[3]-self.atlas.height-25
         self._clamp(area)
+        self.area = area
         root.geometry(f'{self.atlas.width}x{self.atlas.height}{self.x:+d}{self.y:+d}')
         root.update_idletasks()
         native.no_activate(root)
@@ -64,10 +68,46 @@ class CompanionApp:
         self.canvas.bind('<B1-Motion>', self.drag)
         self.canvas.bind('<ButtonRelease-1>', self.release)
         self.canvas.bind('<Button-3>', self.context_menu)
+        self.canvas.bind('<Enter>', lambda event: self.hover(True))
+        self.canvas.bind('<Leave>', lambda event: self.hover(False))
+        self.reduced_motion.trace_add('write', self.motion_changed)
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.bind('<Destroy>', self._destroyed, add='+')
         self.worker = AgentWorker(config, factory=factory, progress=True)
         self.poll_job = root.after(75, self.poll)
+        self.motion_tick()
+
+    def hover(self, value):
+        self.hovered = value  # Hold still while the user aims at or drags the mascot.
+
+    def motion_changed(self, *args):
+        if self.motion_job:
+            self.root.after_cancel(self.motion_job)
+            self.motion_job = None
+        self.motion_started = time.monotonic()
+        if self.reduced_motion.get():
+            self.motion_offset = (0, 0)
+            native.position(self.root, self.x, self.y)
+            if self.fade_job:
+                self.root.after_cancel(self.fade_job)
+                self.fade_job = None
+            self.root.attributes('-alpha', 1)
+        else:
+            self.motion_tick()
+
+    def motion_tick(self):
+        self.motion_job = None
+        if self.closing or self.reduced_motion.get():
+            return
+        if not self._drag and not self.hovered:
+            dx, dy = offset(self.state, time.monotonic()-self.motion_started)
+            left, top, right, bottom = self.area
+            dx = max(left, min(self.x+dx, right-self.atlas.width))-self.x
+            dy = max(top, min(self.y+dy, bottom-self.atlas.height))-self.y
+            if (dx, dy) != self.motion_offset:
+                native.position(self.root, self.x+dx, self.y+dy)
+                self.motion_offset = (dx, dy)
+        self.motion_job = self.root.after(50, self.motion_tick)
 
     def _restore(self):
         if self.position_file:
@@ -99,6 +139,8 @@ class CompanionApp:
 
     def press(self, event):
         self.dismiss_bubble()
+        self.motion_offset = (0, 0)
+        native.position(self.root, self.x, self.y)
         self._drag = (event.x_root, event.y_root, self.x, self.y, False)
 
     def drag(self, event):
@@ -116,7 +158,8 @@ class CompanionApp:
         moved = self._drag[4]
         self._drag = None
         if moved:
-            self._clamp(native.work_area(self.root))
+            self.area = native.work_area(self.root)
+            self._clamp(self.area)
             native.show_passive(self.root, self.x, self.y, self.atlas.width, self.atlas.height, self.always_on_top.get())
             self._save()
         else:
@@ -187,6 +230,7 @@ class CompanionApp:
         if state == self.state:
             return
         self.state = state
+        self.motion_started = time.monotonic()
         self.state_history.append(state)
         self.state_history = self.state_history[-100:]
         self.canvas.itemconfigure(self.sprite, image=self.atlas.images[state])
@@ -351,6 +395,9 @@ class CompanionApp:
             return
         self._save()
         self.closing = True
+        if self.motion_job:
+            self.root.after_cancel(self.motion_job)
+            self.motion_job = None
         self.dismiss_bubble()
         self.set_busy(True)
         if self.terminal:
@@ -359,7 +406,7 @@ class CompanionApp:
 
     def _destroyed(self, event):
         if event.widget is self.root:
-            for job in (self.poll_job, self.idle_job, self.bubble_job, self.response_job, self.fade_job):
+            for job in (self.poll_job, self.idle_job, self.bubble_job, self.response_job, self.fade_job, self.motion_job):
                 if job:
                     self.root.after_cancel(job)
             self.worker.close()

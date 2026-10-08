@@ -10,7 +10,7 @@ A experiência principal é um personagem 2D de desktop. A antiga interface de d
 
 A prancha contém as seis poses. `states.json` define seis **recortes de exibição**, sem gerar arquivos derivados. GDI+ decodifica o JPEG na memória uma vez e o Tk recebe os mesmos valores RGB, sem escala, interpolação, filtros, tintas, espelhamento ou alteração de proporções. Todas as poses são pré-carregadas. Nenhuma IA participa do desenho ou da animação.
 
-O canvas mede 190 × 220 px. A janela recebe uma região Win32 que exclui o fundo quase branco conectado às bordas do recorte, conservando regiões brancas fechadas, como os olhos. Isso é uma máscara da janela, não uma modificação do arquivo ou uma recoloração de pixels. A região também limita o recebimento de cliques. O antialias e as pequenas bordas da compressão original são preservados.
+O canvas mede 190 × 220 px. A janela recebe uma região Win32 que exclui o fundo claro e a franja do JPEG conectados às bordas do recorte, conservando regiões brancas fechadas, como os olhos. O limiar é específico para a paleta escura desta arte. Isso é uma máscara da janela, não uma modificação do arquivo ou uma recoloração de pixels. A região também limita o recebimento de cliques.
 
 ## Poses e eventos
 
@@ -25,7 +25,7 @@ O canvas mede 190 × 220 px. A janela recebe uma região Win32 que exclui o fund
 
 O mapeamento é configurável em `assets/sazabi/states.json`. O agente emite eventos; a interface não usa cronômetros para fingir etapas de pesquisa. FOUND permanece brevemente visível depois do resultado real, seguido de RESPONDING e retorno a IDLE. Sem resultado não há FOUND. Mensagens distinguem empresas identificadas de páginas pendentes e falhas.
 
-As trocas podem usar um fade discreto de 80 ms da janela inteira. O menu Reduzir movimento o desativa. Não há deformações, resampling, caminhada artificial ou animação contínua em repouso.
+As trocas podem usar um fade discreto de 80 ms da janela inteira. O repouso tem flutuação de até três pixels; análise e pesquisa incluem balanço lateral, e resultados recebem um pequeno salto. Apenas a posição da janela muda, sem deformar ou reamostrar a arte. O movimento pausa sob o cursor e durante o arraste. Reduzir movimento desativa o timer de animação e o fade. A posição salva permanece fixa; os deslocamentos temporários respeitam a área útil do monitor.
 
 ## Interação
 
@@ -40,6 +40,8 @@ As trocas podem usar um fade discreto de 80 ms da janela inteira. O menu Reduzir
 Janela sem moldura de até 620 × 440 px, nunca maximizada automaticamente. Abre à direita ou esquerda do mascote conforme o espaço disponível; junto à borda inferior, sobe. É limitada à área útil do monitor.
 
 Preto `#080d0a`, texto verde `#8fdfa7`, borda `#254331`, informação secundária `#72937b`, fonte Consolas monoespaçada. Sem efeitos Matrix, neon animado ou indicadores fictícios. Mostra os eventos reais, respostas, fontes e controles de resultados/histórico/ajuda. Comando em uma linha inferior, Enter para enviar.
+
+A barra lateral de rolagem usa trilho preto e controle verde escuro, com realce verde ao passar o cursor e pressionar.
 
 Clique novamente no mascote, Escape, × ou perda de foco ocultam o terminal. Pesquisa e memória continuam ativas. A conclusão não abre o terminal: apenas atualiza a pose e mostra um balão de até 240 px de texto por 5,5 segundos. Clicar no balão o dispensa.
 

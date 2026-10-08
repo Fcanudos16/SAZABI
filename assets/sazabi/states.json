@@ -2,7 +2,7 @@
   "image": "original.jpg",
   "sha256": "099f5270e553adf574061792cf5f3974318e97f00e9d489520f1fd1f7120cf57",
   "canvas": [190, 220],
-  "background_threshold": 235,
+  "background_threshold": 96,
   "states": {
     "IDLE": [20, 65, 195, 285],
     "ANALYZING": [215, 65, 355, 285],

@@ -64,8 +64,12 @@ def decode_jpeg(path):
         gdip.GdiplusShutdown(token)
 
 
-def foreground_mask(rgb, width, height, threshold=235):
-    """Only near-white pixels connected to the viewport exterior are background."""
+def foreground_mask(rgb, width, height, threshold=96):
+    """Hide white-matted JPEG fringe connected to the exterior, never enclosed eyes.
+
+    This artwork's silhouette is dark. Mixed white/blue edge pixels must be
+    considered too, not only neutral near-white. Source RGB remains untouched.
+    """
     exterior = bytearray(width * height)
     queue = deque()
     def visit(x, y):
@@ -73,7 +77,7 @@ def foreground_mask(rgb, width, height, threshold=235):
         if exterior[i]:
             return
         color = rgb[i*3:i*3+3]
-        if min(color) >= threshold and max(color)-min(color) <= 20:
+        if min(color) >= threshold:
             exterior[i] = 1
             queue.append((x, y))
     for x in range(width):

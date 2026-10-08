@@ -46,7 +46,15 @@ class ResultTerminal:
         self.send.pack(side='right', padx=(5, 0))
         content = tk.Frame(body, bg=BG)
         content.pack(fill='both', expand=True, padx=12, pady=5)
-        scrollbar = ttk.Scrollbar(content)
+        # Native Windows themes ignore scrollbar colors; use a dedicated clam style.
+        style = ttk.Style(self.window)
+        style.theme_use('clam')
+        style.configure('Sazabi.Vertical.TScrollbar', background=BORDER, troughcolor=BG,
+                        bordercolor=BG, lightcolor=BORDER, darkcolor=BORDER,
+                        arrowcolor=FG, width=12, arrowsize=12)
+        style.map('Sazabi.Vertical.TScrollbar', background=[('pressed', '#659f76'), ('active', '#3e7050')],
+                  lightcolor=[('active', '#3e7050')], darkcolor=[('active', '#3e7050')])
+        scrollbar = self.scrollbar = ttk.Scrollbar(content, orient='vertical', style='Sazabi.Vertical.TScrollbar')
         scrollbar.pack(side='right', fill='y')
         self.output = tk.Text(content, bg=BG, fg=FG, font=FONT, relief='flat', wrap='word',
                               selectbackground=BORDER, state='disabled', yscrollcommand=scrollbar.set,
