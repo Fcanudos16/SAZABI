@@ -48,6 +48,7 @@ Reduzir movimento desativa piscadas, transições, translação e bolhas. O time
 - Clique esquerdo: alterna o terminal próximo ao personagem.
 - Movimento superior a seis pixels durante o clique: arrasta; não abre o terminal.
 - Clique direito: terminal, nova pesquisa, configuração, sempre no topo, reduzir movimento e encerrar.
+- O menu é reutilizado; seus callbacks permanecem vivos depois de `tk_popup`. Abertura de janelas e encerramento são agendados depois da liberação do menu, para impedir que a restauração de foco do Windows esconda o terminal recém-aberto. Configuração restaura a janela minimizada e foca o campo de chave.
 - A posição é mantida em memória e salva localmente. Os limites são calculados pela área útil do monitor.
 - Mascote e balões usam NOACTIVATE; não disputam foco com outros aplicativos.
 

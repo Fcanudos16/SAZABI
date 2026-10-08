@@ -12,6 +12,7 @@ import time
 import zlib
 import tempfile
 import os
+import threading
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -236,7 +237,78 @@ def run(mock=False):
         tick(.3)
         assert not app.terminal.visible, 'Click/focus outside should dismiss the terminal'
         other.destroy()
-        app.open_settings()
+        def choose(label, child=None):
+            # Windows modal menus do not run Tk after callbacks. Post keys only
+            # to our own HWND from a helper thread, never to the desktop globally.
+            if app.menu is None:
+                with patch.object(tk.Menu, 'tk_popup'):
+                    app.context_menu(SimpleNamespace(x_root=app.x+50, y_root=app.y+80))
+            assert app.menu.winfo_exists(), 'Popup callbacks were destroyed before selection'
+            labels = [app.menu.entrycget(i, 'label') for i in range(app.menu.index('end')+1)
+                      if app.menu.type(i) != 'separator']
+            keys = [0x28]*(labels.index(label)+1)+[0x0D]
+            if child is not None:
+                submenu = root.nametowidget(app.menu.entrycget(label, 'menu'))
+                children = [submenu.entrycget(i, 'label') for i in range(submenu.index('end')+1)]
+                keys = keys[:-1]+[0x27, 0x24]+[0x28]*children.index(child)+[0x0D]
+            user = native.api()[0]
+            user.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t]
+            handle, done = native.hwnd(root), threading.Event()
+            def select():
+                if done.wait(.2):
+                    return
+                for key in keys:
+                    user.PostMessageW(handle, 0x100, key, 0)
+                    user.PostMessageW(handle, 0x101, key, 0)
+                    if done.wait(.04):
+                        return
+                if not done.wait(2):
+                    user.PostMessageW(handle, 0x1F, 0, 0)  # cancel only our popup on failure
+            helper = threading.Thread(target=select, daemon=True)
+            helper.start()
+            try:
+                app.context_menu(SimpleNamespace(x_root=app.x+50, y_root=app.y+80))
+            finally:
+                done.set()
+                helper.join(timeout=1)
+            tick(.5)
+        choose('Nova pesquisa')
+        assert app.terminal.visible and app.terminal.window.winfo_viewable()
+        assert app.terminal.entry.get() == 'procure empresas em '
+        assert root.focus_get() == app.terminal.entry
+        choose('Configuração · Tavily / Ollama')
+        assert app.preferences.window.winfo_viewable()
+        assert root.focus_get() == app.preferences.key
+        original_preferences = app.preferences
+        app.preferences.window.iconify()
+        tick()
+        choose('Configuração · Tavily / Ollama')
+        assert app.preferences is original_preferences and app.preferences.window.state() == 'normal'
+        assert root.focus_get() == app.preferences.key
+        app.set_busy(True)
+        choose('Nova pesquisa')
+        assert app.terminal.visible and str(app.terminal.entry['state']) == 'disabled'
+        app.set_busy(False)
+        choose('Sempre no topo')
+        assert not bool(root.attributes('-topmost'))
+        assert not bool(app.preferences.window.attributes('-topmost'))
+        choose('Sempre no topo')
+        assert bool(root.attributes('-topmost'))
+        choose('Reduzir movimento')
+        assert not app.reduced_motion.get()
+        choose('Reduzir movimento')
+        assert app.reduced_motion.get() and app.motion_job is None
+        for label, seconds in [('Nunca', 0), ('1 minuto', 60), ('2 minutos', 120), ('5 minutos', 300)]:
+            choose('Dormir após', child=label)
+            assert app.sleep_after.get() == app.animation.sleep.timeout == seconds
+        app.terminal.hide()
+        choose('Abrir / fechar terminal')
+        assert app.terminal.visible
+        choose('Abrir / fechar terminal')
+        assert not app.terminal.visible
+        app.preferences.window.destroy()
+        choose('Configuração · Tavily / Ollama')
+        assert app.preferences is not original_preferences and app.preferences.window.winfo_viewable()
         tick()
         preferences = app.preferences
         preferences.key.insert(0, 'tvly-test-private-key')
@@ -260,10 +332,15 @@ def run(mock=False):
         app.always_on_top.set(False)
         app.topmost_changed()
         assert not bool(root.attributes('-topmost'))
+        # Verify native menu dispatch before closing the event loop used by tick.
+        with patch.object(app, 'close') as close_command:
+            choose('Encerrar SAZABI')
+            close_command.assert_called_once_with()
         app.close()
+        assert app.closing
         app.worker.thread.join(timeout=5)
         assert not app.worker.thread.is_alive()
-        print('PASS: mascot, crossfade, blinking, sleep/wake, bubbles, notifications, task priority, reduced motion, drag/click, terminal, focus, settings, shutdown')
+        print('PASS: mascot, animations, sleep, task priority, native context menu and submenu, search/settings focus, minimized settings, terminal toggle, settings, shutdown')
     finally:
         app.worker.close()
         app.worker.thread.join(timeout=5)

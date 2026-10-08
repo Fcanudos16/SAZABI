@@ -49,6 +49,12 @@ class Preferences:
         self.controls.append(widget)
         return widget
 
+    def show(self):
+        self.window.deiconify()
+        self.window.attributes('-topmost', self.app.always_on_top.get())
+        self.window.lift()
+        self.key.focus_force()
+
     def busy(self, value):
         for widget in self.controls:
             widget.configure(state='disabled' if value or self.app.failed or self.app.closing else 'normal')

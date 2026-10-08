@@ -31,6 +31,7 @@ class CompanionApp:
         root.withdraw()
         self.busy, self.ready, self.failed, self.closing = True, False, False, False
         self.terminal, self.preferences, self.bubble = None, None, None
+        self.menu, self.menu_action_job = None, None
         self.poll_job, self.idle_job = None, None
         self.response_job, self.found_until = None, 0
         self.motion_job, self.motion_offset = None, (0, 0)
@@ -232,8 +233,9 @@ class CompanionApp:
     def open_search(self):
         self.touch()
         terminal = self.get_terminal()
+        terminal.busy(self.busy or self.failed or self.closing)
         terminal.show()
-        if not self.busy:
+        if not (self.busy or self.failed or self.closing):
             terminal.entry.delete(0, 'end')
             terminal.entry.insert(0, 'procure empresas em ')
             terminal.entry.icursor('end')
@@ -241,17 +243,39 @@ class CompanionApp:
     def open_settings(self):
         self.touch()
         if self.preferences and self.preferences.window.winfo_exists():
-            self.preferences.window.lift()
+            self.preferences.show()
             return
         from ui.preferences import Preferences
         self.preferences = Preferences(self)
+        self.preferences.show()
+
+    def menu_action(self, command):
+        # Let Tk release the popup's native focus before opening another window.
+        if self.menu:
+            self.menu.unpost()
+            self.menu.grab_release()
+        if self.menu_action_job:
+            self.root.after_cancel(self.menu_action_job)
+        def run():
+            self.menu_action_job = None
+            if not self.closing:
+                command()
+        self.menu_action_job = self.root.after_idle(run)
 
     def context_menu(self, event):
         self.touch()
+        if self.menu is not None:
+            try:
+                self.menu.activate('none')
+                self.menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                self.menu.grab_release()
+            return
         menu = tk.Menu(self.root, tearoff=False, bg=BG, fg=FG, font=FONT)
-        menu.add_command(label='Abrir / fechar terminal', command=self.toggle_terminal)
-        menu.add_command(label='Nova pesquisa', command=self.open_search)
-        menu.add_command(label='Configuração · Tavily / Ollama', command=self.open_settings)
+        self.menu = menu
+        menu.add_command(label='Abrir / fechar terminal', command=lambda: self.menu_action(self.toggle_terminal))
+        menu.add_command(label='Nova pesquisa', command=lambda: self.menu_action(self.open_search))
+        menu.add_command(label='Configuração · Tavily / Ollama', command=lambda: self.menu_action(self.open_settings))
         menu.add_separator()
         menu.add_checkbutton(label='Sempre no topo', variable=self.always_on_top, command=self.topmost_changed)
         menu.add_checkbutton(label='Reduzir movimento', variable=self.reduced_motion, command=self._save)
@@ -261,12 +285,12 @@ class CompanionApp:
                                        command=self.sleep_timeout_changed)
         menu.add_cascade(label='Dormir após', menu=sleep_menu)
         menu.add_separator()
-        menu.add_command(label='Encerrar SAZABI', command=self.close)
+        menu.add_command(label='Encerrar SAZABI', command=lambda: self.menu_action(self.close))
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
-            menu.destroy()
+            # Keep callbacks alive: tk_popup can return before a selection.
 
     def topmost_changed(self):
         self.root.attributes('-topmost', self.always_on_top.get())
@@ -435,7 +459,7 @@ class CompanionApp:
 
     def _destroyed(self, event):
         if event.widget is self.root:
-            for job in (self.poll_job, self.idle_job, self.response_job, self.motion_job, self.life_job,
+            for job in (self.poll_job, self.idle_job, self.response_job, self.motion_job, self.life_job, self.menu_action_job,
                         self.transitions.job, self.notifications.job):
                 if job:
                     self.root.after_cancel(job)
