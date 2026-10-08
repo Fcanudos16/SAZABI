@@ -4,6 +4,7 @@ import time
 import tkinter as tk
 from ui import native
 from ui.behavior import ease
+from ui.presentation import transform_point
 
 
 def eye_rows(rgb, mask, width, height):
@@ -52,12 +53,15 @@ def eye_rows(rgb, mask, width, height):
 class SazabiRenderer:
     def __init__(self, app):
         self.app, self.state, self.level = app, 'IDLE', -1
-        self.scale = 1.
+        self.scale, self.angle = 1., 0
+        self.lid_points = {}
         self.lids = {}
         for state, pixels in app.atlas.pixels.items():
             items = []
             for x, y, right, color, fraction in eye_rows(pixels, app.atlas.masks[state], app.atlas.width, app.atlas.height):
-                item = app.canvas.create_rectangle(x, y, right, y+1, fill=color, outline='', state='hidden')
+                points = (x, y, right, y, right, y+1, x, y+1)
+                item = app.canvas.create_polygon(*points, fill=color, outline='', state='hidden')
+                self.lid_points[item] = points
                 items.append((item, fraction))
             self.lids[state] = items
 
@@ -66,12 +70,14 @@ class SazabiRenderer:
             for item, _ in items:
                 self.app.canvas.itemconfigure(item, state='hidden')
         self.state, self.level = state, -1
-        self.scale = 1.
+        self.scale, self.angle = 1., 0
+        for item, _ in self.lids[state]:
+            self.app.canvas.coords(item, *self.lid_points[item])
         self.app.canvas.itemconfigure(self.app.sprite, image=self.app.atlas.images[state])
         native.shape(self.app.root, self.app.atlas.regions[state])
 
     def blink(self, amount):
-        if self.scale != 1. or self.state in ('CONFIGURATION', 'EXIT_HOVER', 'LANDING'):
+        if self.state in ('CONFIGURATION', 'EXIT_HOVER', 'LANDING'):
             amount = 0
         level = round(amount*8)
         if level == self.level:
@@ -80,15 +86,23 @@ class SazabiRenderer:
         for item, fraction in self.lids[self.state]:
             self.app.canvas.itemconfigure(item, state='normal' if fraction <= level/8 else 'hidden')
 
-    def landing_scale(self, amount):
-        scale = max(.98, min(1., round(amount, 2))) if self.state == 'LANDING' else 1.
-        if scale == self.scale:
+    def transform(self, angle, scale):
+        angle, scale = max(-3, min(3, round(angle))), max(.98, min(1., round(scale, 2)))
+        if (angle, scale) == (self.angle, self.scale):
             return
-        self.blink(0)
-        self.scale = scale
-        image, region = self.app.atlas.landing_frames[scale] if scale != 1. else (self.app.atlas.images[self.state], self.app.atlas.regions[self.state])
+        self.angle, self.scale = angle, scale
+        image, region = self.current_frame()
         self.app.canvas.itemconfigure(self.app.sprite, image=image)
         native.shape(self.app.root, region)
+        for item, _ in self.lids[self.state]:
+            points = self.lid_points[item]
+            transformed = []
+            for x, y in zip(points[::2], points[1::2]):
+                transformed.extend(transform_point(x, y, self.app.atlas.width, self.app.atlas.height, angle, scale))
+            self.app.canvas.coords(item, *transformed)
+
+    def current_frame(self):
+        return self.app.atlas.frame(self.state, self.angle, self.scale)
 
 
 class SazabiTransitionController:
@@ -112,15 +126,15 @@ class SazabiTransitionController:
         if self.app.reduced_motion.get():
             self.renderer.pose(state)
             return
-        old = self.renderer.state
+        image, region = self.renderer.current_frame()
         window = self.ghost = tk.Toplevel(self.app.root)
         window.withdraw()
         window.overrideredirect(True)
-        tk.Label(window, image=self.app.atlas.images[old], bd=0, highlightthickness=0).pack()
+        tk.Label(window, image=image, bd=0, highlightthickness=0).pack()
         window.update_idletasks()
         native.no_activate(window)
         native.click_through(window)
-        native.shape(window, self.app.atlas.regions[old])
+        native.shape(window, region)
         window.attributes('-alpha', 1)
         window.deiconify()
         native.show_passive(window, self.app.x, self.app.y, self.app.atlas.width, self.app.atlas.height, self.app.always_on_top.get())

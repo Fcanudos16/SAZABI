@@ -8,7 +8,7 @@ A experiência principal é um personagem 2D de desktop. A antiga interface de d
 
 `099f5270e553adf574061792cf5f3974318e97f00e9d489520f1fd1f7120cf57`
 
-A prancha contém as seis poses. `states.json` define seis **recortes de exibição** e o mapa central `state_models`, sem gerar arquivos derivados em disco. GDI+ decodifica o JPEG uma vez. As poses normais preservam os pixels de origem; o pouso utiliza duas escalas uniformes de apresentação (98% e 99%), pré-calculadas em memória, sem mudar as proporções do personagem ou o arquivo. Nenhuma IA participa do desenho ou da animação.
+A prancha contém as seis poses. `states.json` define seis **recortes de exibição** e o mapa central `state_models`, sem gerar arquivos derivados em disco. GDI+ decodifica o JPEG uma vez. A apresentação usa rotações de até três graus e escalas uniformes de 98–100%, preservando proporções e o arquivo. As amostras mantêm a paleta original. Nenhuma IA participa do desenho ou da animação.
 
 O canvas mede 190 × 220 px. A janela recebe uma região Win32 que exclui o fundo claro e a franja do JPEG conectados às bordas do recorte, conservando regiões brancas fechadas, como os olhos. O limiar é específico para a paleta escura desta arte. Isso é uma máscara da janela, não uma modificação do arquivo ou uma recoloração de pixels. A região também limita o recebimento de cliques.
 
@@ -35,7 +35,11 @@ Arrastar mais de seis pixels inicia JUMPING → DRAGGING: o cursor controla dire
 
 As piscadas duram aproximadamente 220 ms, com intervalos de 3–7 segundos e ocasionais piscadas duplas. Usam máscaras temporárias de composição somente nas poses de repouso, trabalho e resultado; nenhuma alteração é gravada no JPEG. Não há pálpebras desenhadas sobre a pose de sono, configurações, pouso ou alerta de encerramento.
 
-**Limite da arte plana:** não há camada independente de cabeça, pescoço ou corpo. Por isso não há inclinação isolada da cabeça nem expansão do torso. O movimento do conjunto sugere respiração e postura, preservando proporções, contornos e pixels da arte. Separar ou redesenhar essas partes exigiria novos assets do autor.
+As poses possuem também animação de apresentação: IDLE inclina suavemente e respira com escala uniforme; trabalho acompanha o movimento lateral com inclinação; arraste inclina conforme o deslocamento e balança; pouso amortece; a pose do menu oscila discretamente; EXIT_HOVER executa uma reação curta de tensão; FOUND/RESPONDING fazem um pequeno aceno. Sono inclina o conjunto em até três graus com respiração lenta, e o despertar retorna gradualmente. As pálpebras de piscada usam a mesma transformação da imagem para manter alinhamento.
+
+**Limite da arte plana:** cabeça, pescoço, corpo e manto não são camadas independentes. A rotação e a respiração são do personagem inteiro, sem recortar a cabeça, deformar o torso ou redesenhar detalhes. Animação isolada dessas partes exige assets separados do autor.
+
+O cache possui no máximo 120 apresentações transformadas (seis poses, sete ângulos e três escalas, descontando as originais). Cada combinação é calculada uma vez quando necessária e depois reutilizada; não há criação contínua de bitmaps nem crescimento ilimitado. Máscara de clique e pálpebras acompanham a transformação. Reduzir movimento restaura imediatamente ângulo zero e escala original.
 
 ## Sono e autonomia
 
@@ -79,6 +83,7 @@ Configuração é uma janela opcional separada, acessível pelo menu do mascote.
 | `ui/companion.py` | estados, interação, notificações e ciclo de vida do mascote |
 | `ui/behavior.py` | SazabiStateManager, SazabiAnimationController, SazabiIdleController e SazabiSleepController, testáveis sem Tk |
 | `ui/interaction.py` | SazabiInteractionController: popup não modal, hover, teclado e fechamento |
+| `ui/presentation.py` | inclinação, respiração por escala e transformações uniformes das poses originais |
 | `ui/behavior.py` | SazabiDragController e SazabiWorkController: pulo, pouso e movimento lateral |
 | `ui/renderer.py` | SazabiRenderer, pálpebras por composição e SazabiTransitionController com no máximo duas expressões |
 | `ui/effects.py` | bolhas de sono e SazabiNotificationController com timers canceláveis |

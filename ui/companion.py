@@ -14,6 +14,7 @@ from ui import native
 from ui.motion import offset
 from ui.behavior import SazabiAnimationController, SazabiDragController, validate_settings
 from ui.interaction import SazabiInteractionController
+from ui.presentation import SazabiPresentationController
 from ui.renderer import SazabiRenderer, SazabiTransitionController
 from ui.effects import SleepBubbles, SazabiNotificationController
 
@@ -46,6 +47,8 @@ class CompanionApp:
         self.animation_settings = validate_settings(json.loads((ASSETS / 'animation.json').read_text(encoding='utf-8')))
         self.animation = SazabiAnimationController(time.monotonic(), self.animation_settings)
         self.drag_controller = SazabiDragController(self.animation_settings)
+        self.presentation = SazabiPresentationController()
+        self.visual_started = time.monotonic()
         self.wake_job, self.visual_state = None, 'IDLE'
         self.visual_history = ['IDLE']
         self.sleep_after = tk.IntVar(root, self.animation_settings['sleep_after_seconds'])
@@ -136,6 +139,7 @@ class CompanionApp:
         self.animation.visual_state = state
         if state != self.visual_state:
             self.visual_state = state
+            self.visual_started = time.monotonic()
             self.visual_history = (self.visual_history+[state])[-100:]
             key = {'JUMPING': 'jump_transition_ms', 'LANDING': 'landing_transition_ms',
                    'WAKE_UP': 'wake_transition_ms', 'FALLING_ASLEEP': 'sleep_transition_ms'}.get(state, 'transition_ms')
@@ -165,7 +169,8 @@ class CompanionApp:
             native.position(self.root, self.x, self.y)
             self.root.attributes('-alpha', 1)
             self.transitions.finish()
-            self.renderer.landing_scale(1.)
+            self.presentation.reset()
+            self.renderer.transform(0, 1.)
             self.renderer.blink(0)
             self.sleep_bubbles.clear()
         else:
@@ -186,7 +191,9 @@ class CompanionApp:
         self.renderer.blink(blink if self.animation_settings['blink_enabled'] else 0)
         self.sleep_bubbles.update(now, phase == 'SLEEPING')
         drag_state, drag_y, scale = self.drag_controller.sample(now)
-        self.renderer.landing_scale(scale)
+        angle, body_scale = self.presentation.sample(now, self.visual_state, self.animation.sleep.depth(now),
+                                                     mx, scale, now-self.visual_started)
+        self.renderer.transform(angle, body_scale)
         if drag_state or not self.hovered:
             dx, dy = mx, my
             if drag_state:
@@ -256,6 +263,7 @@ class CompanionApp:
                     self.drag_controller.start(time.monotonic())
                     self.refresh_visual()
                 self._drag = (mx, my, x, y, True)
+                self.presentation.drag(x+dx-self.x)
                 self.x, self.y = x+dx, y+dy
                 jump_y = self.drag_controller.sample(time.monotonic())[1] if not self.reduced_motion.get() else 0
                 self.motion_offset = (0, jump_y)

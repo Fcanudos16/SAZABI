@@ -137,8 +137,11 @@ def run(mock=False):
         app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
         app.drag(SimpleNamespace(x_root=app.x+65, y_root=app.y+110))
         app.animation.idle.blink_start = time.monotonic()
-        tick(.1)
-        assert app.renderer.level > 0 and app.state == 'IDLE', 'Drag must keep presentation animation alive'
+        blink_levels = []
+        for _ in range(12):
+            tick(.02)
+            blink_levels.append(app.renderer.level)
+        assert max(blink_levels) > 0 and app.state == 'IDLE', 'Drag must keep presentation animation alive'
         app.release(None)
         assert app.visual_state == 'LANDING'
         tick(.7)
@@ -147,6 +150,8 @@ def run(mock=False):
         tick(1.6)
         assert app.animation.sleep.phase == 'SLEEPING'
         assert app.renderer.level == 0, 'Sleep must preserve original eyes'
+        tick(.4)
+        assert app.renderer.angle >= 2 and app.renderer.scale <= 1
         assert all(app.renderer.lids[state] for state in app.atlas.images)
         app.sleep_bubbles.next_at = time.monotonic()
         tick(.4)
@@ -303,6 +308,12 @@ def run(mock=False):
         app.set_busy(False)
         app.set_state('IDLE')
         app.reduced_motion.set(True)
+        assert (app.renderer.angle, app.renderer.scale) == (0, 1.)
+        cached = app.atlas.frame('IDLE', 3, .99)
+        count = len(app.atlas.frames)
+        for _ in range(50):
+            assert app.atlas.frame('IDLE', 3, .99) is cached
+        assert len(app.atlas.frames) == count <= 120
         def choose(label, child=None):
             app.context_menu(SimpleNamespace(x_root=app.x+50, y_root=app.y+80))
             tick(.12)

@@ -1,7 +1,7 @@
 """Display original JPEG pixels, with six viewports and exterior-only window masks.
 
 Windows GDI+ decodes the untouched original JPEG once. White enclosed eyes
-remain inside the window region. Two uniform landing scales are cached only
+remain inside the window region. Bounded whole-art transforms are cached only
 for presentation; no derived artwork is written to disk.
 """
 import ctypes as c
@@ -143,19 +143,18 @@ class SpriteAtlas:
             self.pixels[state] = bytes(display)
             self.masks[state] = bytes(full_mask)
             self.regions[state] = region_data(full_mask, self.width, self.height)
-        self.landing_frames = {}
-        for scale in (.98, .99):
-            # Tiny uniform presentation scales, cached once. Never rewrite assets.
-            rgb = bytearray(b'\xff'*(self.width*self.height*3))
-            mask = bytearray(self.width*self.height)
-            original, shape = self.pixels['LANDING'], self.masks['LANDING']
-            for y in range(self.height):
-                sy = round(self.height-1+(y-self.height+1)/scale)
-                for x in range(self.width):
-                    sx = round(self.width/2+(x-self.width/2)/scale)
-                    if 0 <= sx < self.width and 0 <= sy < self.height:
-                        i, source = y*self.width+x, sy*self.width+sx
-                        rgb[i*3:i*3+3] = original[source*3:source*3+3]
-                        mask[i] = shape[source]
+        self.frames = {}
+        self.root = root
+
+    def frame(self, state, angle=0, scale=1.):
+        angle, scale = max(-3, min(3, round(angle))), max(.98, min(1., round(scale, 2)))
+        if angle == 0 and scale == 1.:
+            return self.images[state], self.regions[state]
+        key = (state, angle, scale)
+        if key not in self.frames:
+            import tkinter as tk
+            from ui.presentation import transform_pixels
+            rgb, mask = transform_pixels(self.pixels[state], self.masks[state], self.width, self.height, angle, scale)
             ppm = f'P6\n{self.width} {self.height}\n255\n'.encode()+rgb
-            self.landing_frames[scale] = (tk.PhotoImage(master=root, data=ppm, format='PPM'), region_data(mask, self.width, self.height))
+            self.frames[key] = (tk.PhotoImage(master=self.root, data=ppm, format='PPM'), region_data(mask, self.width, self.height))
+        return self.frames[key]
