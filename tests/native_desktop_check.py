@@ -118,6 +118,8 @@ def run(mock=False):
         wait()
         assert app.terminal is None, 'Startup must not create/show the old UI or console'
         assert root.overrideredirect()
+        from ui.sprites import TRANSPARENT_COLOR
+        assert str(root.attributes('-transparentcolor')) == TRANSPARENT_COLOR, repr(root.attributes('-transparentcolor'))
         assert bool(root.attributes('-topmost'))
         assert app.state == 'IDLE' and len(app.atlas.images) == 6
         anchor = (app.x, app.y)
@@ -142,6 +144,7 @@ def run(mock=False):
         app.set_state('ANALYZING')
         tick(.12)
         assert app.transitions.ghost is not None
+        assert str(app.transitions.ghost.attributes('-transparentcolor')) == TRANSPARENT_COLOR
         assert 0 < float(root.attributes('-alpha')) < 1
         tick(.4)
         assert app.transitions.ghost is None and float(root.attributes('-alpha')) == 1
@@ -220,6 +223,14 @@ def run(mock=False):
         assert gdi.PtInRegion(region, eye % app.atlas.width, eye // app.atlas.width)
         gdi.DeleteObject(region)
         for state in app.atlas.images:
+            from ui.presentation import transform_pixels
+            for angle, scale in ((0, 1.), (-2, .98), (2, .99)):
+                image, _ = app.atlas.frame(state, angle, scale)
+                rgb, shape = transform_pixels(app.atlas.pixels[state], app.atlas.masks[state],
+                                               app.atlas.width, app.atlas.height, angle, scale)
+                for i in range(0, len(shape), 97):
+                    expected = tuple(rgb[i*3:i*3+3]) if shape[i] else (255, 0, 255)
+                    assert image.get(i % app.atlas.width, i // app.atlas.width) == expected
             app.renderer.pose(state)
             tick(.05)
             capture(root, 'mascot-' + state.lower() + '.png')

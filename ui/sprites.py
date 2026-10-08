@@ -13,6 +13,19 @@ import struct
 import sys
 
 
+TRANSPARENT_COLOR = '#ff00ff'
+TRANSPARENT_RGB = bytes((255, 0, 255))
+
+
+def display_ppm(rgb, mask, width, height):
+    """Key only masked exterior pixels; preserve every foreground/eye pixel."""
+    display = bytearray(rgb)
+    for i, visible in enumerate(mask):
+        if not visible:
+            display[i*3:i*3+3] = TRANSPARENT_RGB
+    return f'P6\n{width} {height}\n255\n'.encode() + display
+
+
 ASSETS = Path(__file__).resolve().parents[1] / 'assets' / 'sazabi'
 
 
@@ -138,7 +151,7 @@ class SpriteAtlas:
                 index = (oy+y)*self.width+ox
                 display[index*3:(index+w)*3] = crop[y*w*3:(y+1)*w*3]
                 full_mask[index:index+w] = mask[y*w:(y+1)*w]
-            ppm = f'P6\n{self.width} {self.height}\n255\n'.encode() + display
+            ppm = display_ppm(display, full_mask, self.width, self.height)
             self.images[state] = tk.PhotoImage(master=root, data=ppm, format='PPM')
             self.pixels[state] = bytes(display)
             self.masks[state] = bytes(full_mask)
@@ -155,6 +168,6 @@ class SpriteAtlas:
             import tkinter as tk
             from ui.presentation import transform_pixels
             rgb, mask = transform_pixels(self.pixels[state], self.masks[state], self.width, self.height, angle, scale)
-            ppm = f'P6\n{self.width} {self.height}\n255\n'.encode()+rgb
+            ppm = display_ppm(rgb, mask, self.width, self.height)
             self.frames[key] = (tk.PhotoImage(master=self.root, data=ppm, format='PPM'), region_data(mask, self.width, self.height))
         return self.frames[key]

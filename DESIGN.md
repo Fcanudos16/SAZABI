@@ -103,3 +103,8 @@ O terminal mantém até 2.500 linhas em memória para limitar consumo; as pesqui
 Também verifica crossfade, piscadas, sono sem sobrepor olhos, bloqueio de clique/arraste durante sono, comando adiado até despertar, retorno ao trabalho após pouso, hover de encerramento sem encerrar, popup e submenu, limite de bolhas, notificação e opção Nunca. A suíte pura simula 12 horas de relógio de comportamento; isso não equivale a um teste de 12 horas de CPU/GPU, memória ou renderização no desktop. Não foi realizado benchmark prolongado no equipamento do usuário.
 
 O mascote requer Windows. O backend/CLI permanece portátil. O posicionamento foi testado matematicamente em áreas de múltiplos monitores, mas escalas DPI mistas e monitores físicos adicionais exigem teste no equipamento correspondente. Não houve certificação de acessibilidade por leitor de tela.
+
+
+### Transparência durante animações
+
+A máscara externa também é aplicada ao bitmap de apresentação por uma cor transparente exclusiva, tanto nas poses originais quanto nos quadros com rotação e escala. O Canvas e a camada de transição usam a mesma transparência. Assim, a troca assíncrona entre imagem e região Win32 não expõe o fundo branco do JPEG. Os pixels do personagem e dos olhos são preservados; o arquivo original permanece inalterado. A camada anterior é preparada com opacidade zero antes de aparecer, já alinhada ao deslocamento atual do mascote.

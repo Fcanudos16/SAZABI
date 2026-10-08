@@ -3,6 +3,7 @@ from collections import Counter
 import time
 import tkinter as tk
 from ui import native
+from ui.sprites import TRANSPARENT_COLOR
 from ui.behavior import ease
 from ui.presentation import transform_point
 
@@ -127,14 +128,19 @@ class SazabiTransitionController:
         window = self.ghost = tk.Toplevel(self.app.root)
         window.withdraw()
         window.overrideredirect(True)
-        tk.Label(window, image=image, bd=0, highlightthickness=0).pack()
+        window.configure(bg=TRANSPARENT_COLOR)
+        window.attributes('-transparentcolor', TRANSPARENT_COLOR)
+        window.attributes('-alpha', 0)
+        tk.Label(window, image=image, bg=TRANSPARENT_COLOR, bd=0, highlightthickness=0).pack()
         window.update_idletasks()
         native.no_activate(window)
         native.click_through(window)
         native.shape(window, region)
-        window.attributes('-alpha', 1)
         window.deiconify()
-        native.show_passive(window, self.app.x, self.app.y, self.app.atlas.width, self.app.atlas.height, self.app.always_on_top.get())
+        window.update_idletasks()
+        dx, dy = self.app.motion_offset
+        native.show_passive(window, self.app.x+dx, self.app.y+dy, self.app.atlas.width, self.app.atlas.height, self.app.always_on_top.get())
+        window.attributes('-alpha', 1)
         self.app.root.attributes('-alpha', 0)
         self.renderer.pose(state)
         self.started = time.monotonic()

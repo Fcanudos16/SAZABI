@@ -8,7 +8,7 @@ from queue import Empty
 
 from core.bootstrap import build_agent
 from core.worker import AgentWorker
-from ui.sprites import SpriteAtlas, ASSETS
+from ui.sprites import SpriteAtlas, ASSETS, TRANSPARENT_COLOR
 from ui.terminal import ResultTerminal, BG, FG, FONT
 from ui import native
 from ui.motion import offset
@@ -58,9 +58,10 @@ class CompanionApp:
         root.title('SAZABI')
         root.overrideredirect(True)
         root.resizable(False, False)
-        root.configure(bg='white')
+        root.configure(bg=TRANSPARENT_COLOR)
+        root.attributes('-transparentcolor', TRANSPARENT_COLOR)
         self.canvas = tk.Canvas(root, width=self.atlas.width, height=self.atlas.height,
-                                bg='white', highlightthickness=0, borderwidth=0, cursor='hand2')
+                                bg=TRANSPARENT_COLOR, highlightthickness=0, borderwidth=0, cursor='hand2')
         self.canvas.pack()
         self.sprite = self.canvas.create_image(0, 0, anchor='nw', image=self.atlas.images['IDLE'])
         root.geometry(f'{self.atlas.width}x{self.atlas.height}+0+0')

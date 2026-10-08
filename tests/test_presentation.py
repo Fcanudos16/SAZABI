@@ -39,3 +39,22 @@ def test_presentation_eyelids_and_art_share_the_same_transform():
     _, shape = transform_pixels(rgb, mask, width, height, 3, .99)
     x, y = transform_point(14, 17, width, height, 3, .99)
     assert shape[round(y)*width+round(x)]
+
+
+def test_exterior_is_transparent_key_in_every_transformed_frame():
+    from ui.sprites import display_ppm, TRANSPARENT_RGB
+    width = height = 20
+    rgb = bytearray(b'\xff' * width * height * 3)
+    mask = bytes(int(4 <= x < 16 and 4 <= y < 16) for y in range(height) for x in range(width))
+    for i, visible in enumerate(mask):
+        if visible and i != 10*width+10:
+            rgb[i*3:i*3+3] = bytes((18, 30, 40))
+    original = bytes(rgb)
+    for angle in range(-3, 4):
+        for scale in (.98, .99, 1.):
+            pixels, shape = transform_pixels(rgb, mask, width, height, angle, scale)
+            rendered = display_ppm(pixels, shape, width, height).split(b'\n', 3)[3]
+            assert any(rendered[i*3:i*3+3] == b'\xff\xff\xff' for i, on in enumerate(shape) if on)
+            for i, on in enumerate(shape):
+                assert rendered[i*3:i*3+3] == (pixels[i*3:i*3+3] if on else TRANSPARENT_RGB)
+    assert bytes(rgb) == original
