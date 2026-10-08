@@ -1,0 +1,14 @@
+{
+  "image": "original.jpg",
+  "sha256": "099f5270e553adf574061792cf5f3974318e97f00e9d489520f1fd1f7120cf57",
+  "canvas": [190, 220],
+  "background_threshold": 235,
+  "states": {
+    "IDLE": [20, 65, 195, 285],
+    "ANALYZING": [215, 65, 355, 285],
+    "RESEARCHING": [365, 65, 545, 285],
+    "WORKING": [25, 295, 200, 500],
+    "FOUND": [220, 295, 365, 500],
+    "RESPONDING": [385, 295, 545, 500]
+  }
+}

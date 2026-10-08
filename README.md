@@ -1,12 +1,12 @@
 # SAZABI — inteligência comercial local
 
-Aplicativo desktop em Python que pesquisa páginas públicas pela **Tavily**, identifica empresas a partir dos próprios sites e organiza evidências e possíveis oportunidades em SQLite. A interface é nativa, em Tkinter: não abre navegador, servidor ou porta web.
+Mascote de desktop que pesquisa páginas públicas pela **Tavily**, identifica empresas a partir dos próprios sites e organiza evidências e possíveis oportunidades em SQLite. Ao iniciar, aparece somente o personagem 2D da arte original do usuário. Não abre dashboard, navegador, servidor ou porta web.
 
 **O uso normal não carrega empresas fictícias.** A base começa vazia. Dados sintéticos existem apenas em `tests/`, para testes isolados; o antigo comando `--mock` foi removido.
 
 ## Abrir e configurar
 
-Requer **Python 3.9+ com Tcl/Tk**. Não precisa instalar bibliotecas de runtime.
+O mascote requer **Windows e Python 3.9+ com Tcl/Tk**. Usa GDI+ e regiões nativas do Windows, sem bibliotecas extras de runtime. CLI e backend continuam independentes da camada visual.
 
 ```powershell
 git clone https://github.com/Fcanudos16/SAZABI.git
@@ -14,12 +14,23 @@ cd SAZABI
 python main.py
 ```
 
-No Windows, também pode abrir `iniciar_sazabi.cmd`. Se houver um ambiente `.venv`, o iniciador usa esse Python.
+No Windows, abra `iniciar_sazabi.cmd` para iniciar com `pythonw`, sem manter um console aberto. Se houver um ambiente `.venv`, o iniciador usa esse Python. `iniciar_sazabi.pyw` também pode ser aberto diretamente quando arquivos `.pyw` estão associados ao Python.
 
-1. Abra **Configuração** na janela.
+1. Clique com o botão direito no **mascote → Configuração · Tavily / Ollama**.
 2. Cole sua chave obtida no [painel da Tavily](https://app.tavily.com/).
 3. Clique em **Salvar e conectar**. O SAZABI valida a chave no endpoint de uso da conta, salva no `.env` local e habilita a pesquisa sem reiniciar.
-4. Abra **Nova pesquisa** e envie, por exemplo, `procure clínicas em Campinas`.
+4. Clique no mascote para abrir o terminal e envie, por exemplo, `procure clínicas em Campinas`.
+
+### Usar o mascote
+
+- **Arraste** o personagem para movê-lo. Um arraste não abre o terminal.
+- **Clique** para abrir ou fechar o terminal preto e verde, próximo ao personagem (até 620 × 440 px).
+- **Escape, × ou clique fora** fecham apenas o terminal. A pesquisa continua em segundo plano.
+- **Clique direito** dá acesso a nova pesquisa, configuração, Sempre no topo, Reduzir movimento e Encerrar SAZABI.
+- Ao terminar, a pose muda e um pequeno aviso aparece por 5,5 segundos. Os resultados não são abertos automaticamente e o foco de outro aplicativo é preservado.
+- A posição e as preferências do mascote ficam em `data/companion.json`, junto à pasta do banco configurado.
+
+As seis poses são vistas da mesma prancha JPEG, sem redimensionamento, recoloração, redesenho ou geração por IA. O arquivo original permanece intacto em `assets/sazabi/original.jpg`, verificado por SHA-256. O mapeamento das poses está em `assets/sazabi/states.json`. A transparência é aplicada à região da janela, preservando o branco dos olhos. Consulte [DESIGN.md](DESIGN.md).
 
 Sem chave, a janela, o histórico, a ajuda e os dados já salvos continuam disponíveis. Pesquisas novas mostram a configuração necessária. Nenhum resultado de demonstração é usado como substituto.
 
@@ -32,7 +43,7 @@ Alternativamente, copie `.env.example` para `.env` e preencha `SEARCH_API_KEY`. 
 - Empresas com identidade publicada em JSON-LD ou metadados do próprio site, acompanhadas de URL e observações. Identidade publicada não equivale a validação cadastral independente.
 - Páginas retornadas pela Tavily que não puderam ser identificadas: título, URL, trecho do provedor e motivo da limitação. São persistidas em `/results` sem virar empresas ou oportunidades fictícias.
 - Sinais e hipóteses baseados em trechos consultados. Campos sem informação ficam como **Não identificado**. Cidade, porte e segmento não são preenchidos a partir do pedido.
-- Histórico com situação da execução, inclusive falhas de API, e painel com contagens reais do banco.
+- Histórico com situação da execução, inclusive falhas de API, e relatórios com contagens reais do banco.
 
 O score indica prioridade de investigação, não probabilidade de venda. Hipóteses não comprovam que uma empresa precisa de software. O aplicativo não envia mensagens às empresas.
 
@@ -81,7 +92,7 @@ python main.py --backup
 
 ### Interpretação com Ollama local
 
-Instale e abra o [Ollama](https://ollama.com/download), com um modelo de conversação baixado para seu computador. No SAZABI, abra **Configuração → IA local (Ollama) → Atualizar modelos**, selecione um modelo e clique em **Ativar modelo**. A escolha é salva no `.env` e passa a valer sem reiniciar. **Desativar IA** mantém a pesquisa e os relatórios por regras disponíveis.
+Instale e abra o [Ollama](https://ollama.com/download), com um modelo de conversação baixado para seu computador. Clique direito no mascote → **Configuração**, e na seção Ollama clique em **Atualizar**, selecione um modelo e clique em **Ativar**. A escolha é salva no `.env` e passa a valer sem reiniciar. **Desativar** mantém a pesquisa e os relatórios por regras disponíveis.
 
 Depois de investigar uma empresa, envie `/ai Nome da empresa`, ou `/ai` para a empresa selecionada anteriormente. O modelo recebe até oito trechos com URL e data, e produz uma interpretação separada em fatos, hipóteses e limitações. A resposta não é salva como evidência e não altera cadastro, score ou oportunidades. Não há acesso a ferramentas ou envio automático de contatos.
 
@@ -104,7 +115,9 @@ Sites podem bloquear coleta, exigir JavaScript ou não publicar identidade sufic
 
 ## Organização
 
-- `main.py`, `desktop.py`, `ui/`: execução, janela e componentes; [DESIGN.md](DESIGN.md) documenta o visual.
+- `main.py`, `desktop.py`: execução; `ui/companion.py`: mascote; `ui/terminal.py`: terminal secundário.
+- `ui/sprites.py`, `ui/native.py`: leitura da arte original, regiões de janela e posicionamento.
+- `ui/preferences.py`: configuração opcional; `core/worker.py`: execução em segundo plano e fila de eventos.
 - `core/`: configuração, conexão Tavily, comandos, relatórios e memória.
 - `research/`: busca, coleta pública, normalização e investigação.
 - `analysis/`: sinais, hipóteses, score e interpretação opcional.

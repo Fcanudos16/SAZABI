@@ -88,7 +88,8 @@ def test_native_window_mock_flow():
         app.submit('procure clínicas em Campinas')
         assert app.busy
         until(lambda: not app.busy)
-        assert 'Pesquisa concluída' in app.output.get('1.0', 'end')
+        assert 'Pesquisa concluída' in app.terminal.output.get('1.0', 'end')
+        assert not app.terminal.visible
     finally:
         app.close()
         app.worker.thread.join(timeout=5)

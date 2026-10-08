@@ -9,6 +9,7 @@ __pycache__/
 *.db-shm
 *.zip
 .test-deps/
+.test-deps-*/
 .venv/
 venv/
 .env.*

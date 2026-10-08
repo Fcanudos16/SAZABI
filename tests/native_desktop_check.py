@@ -69,14 +69,17 @@ def screenshot(root, path):
 
 
 def run(mock=False):
+    from types import SimpleNamespace
+    from ui import native
     temporary = tempfile.TemporaryDirectory()
     root = tk.Tk()
-    root.attributes('-alpha', 0)
+    root.withdraw()
     app = DesktopApp(root, Config(mock=mock, database_path=':memory:', search_api_key='',
                                  env_file=str(Path(temporary.name) / '.env')), factory=build_agent)
+    app.reduced_motion.set(True)
     failures = []
     root.report_callback_exception = lambda kind, error, tb: failures.append(error)
-    def tick(seconds=.2):
+    def tick(seconds=.15):
         deadline = time.monotonic()+seconds
         while time.monotonic() < deadline:
             root.update()
@@ -88,88 +91,103 @@ def run(mock=False):
             tick(.05)
         assert not app.busy
         tick()
-    def capture(name):
+    def capture(window, name):
         if '--screenshots' in sys.argv:
-            screenshot(root, Path('data/desktop-previews') / name)
+            screenshot(window, Path('data/desktop-previews') / (('fixture-' if mock else '') + name))
     try:
         wait()
-        assert app.page == 'dashboard'
-        assert app.dashboard.snapshot['found'] == 0
-        assert app.indicator.state == 'ONLINE'
-        capture('dashboard-empty.png')
-        app.prepare_search('procure clínicas em Campinas')
-        assert app.page == 'chat'
-        app.submit() if mock else app.submit('/status')
-        wait()
-        assert ('Pesquisa concluída' if mock else 'Fontes ativas: nenhuma') in app.output.get('1.0', 'end')
-        if mock:
-            assert app.dashboard.snapshot['found'] > 0
-        capture('conversation.png')
-        app.show_page('dashboard')
+        assert app.terminal is None, 'Startup must not create/show the old UI or console'
+        assert root.overrideredirect()
+        assert bool(root.attributes('-topmost'))
+        assert app.state == 'IDLE' and len(app.atlas.images) == 6
+        # Windows owns the exact shape: exterior pixels are not clickable, eyes are.
+        user, gdi = native.api()
+        gdi.CreateRectRgn.argtypes, gdi.CreateRectRgn.restype = [ctypes.c_int]*4, wintypes.HANDLE
+        user.GetWindowRgn.argtypes = [wintypes.HWND, wintypes.HANDLE]
+        gdi.PtInRegion.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_int]
+        region = gdi.CreateRectRgn(0, 0, 0, 0)
+        assert user.GetWindowRgn(native.hwnd(root), region)
+        assert not gdi.PtInRegion(region, 0, 0)
+        mask = app.atlas.masks['IDLE']
+        eye = next(i for i, on in enumerate(mask) if on and tuple(app.atlas.images['IDLE'].get(i % app.atlas.width, i // app.atlas.width)) == (255, 255, 255))
+        assert gdi.PtInRegion(region, eye % app.atlas.width, eye // app.atlas.width)
+        gdi.DeleteObject(region)
+        for state in app.atlas.images:
+            app.set_state(state)
+            tick(.05)
+            capture(root, 'mascot-' + state.lower() + '.png')
+        app.set_state('IDLE')
+        before = (app.x, app.y)
+        app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
+        app.drag(SimpleNamespace(x_root=app.x+45, y_root=app.y+95))
+        app.release(None)
+        assert (app.x, app.y) != before
+        assert app.terminal is None, 'Dragging must not open results'
+        app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
+        app.release(None)
         tick()
-        capture('dashboard.png')
+        assert app.terminal.visible
+        assert app.terminal.window.winfo_width() <= 700
+        assert app.terminal.window.winfo_height() <= 500
+        app.state_history = ['IDLE']
+        app.submit('procure clínicas em Campinas')
+        app.terminal.hide()
+        foreground = native.api()[0].GetForegroundWindow()
+        wait()
+        tick(.5)
+        assert not app.terminal.visible, 'Completion must not show results automatically'
+        assert native.api()[0].GetForegroundWindow() == foreground, 'Completion stole focus'
+        text = app.terminal.output.get('1.0', 'end')
+        assert ('Pesquisa concluída' if mock else 'Pesquisa não iniciada') in text
+        if mock:
+            assert set(app.atlas.images) <= set(app.state_history)
+            assert app.notice and 'empresas' in app.notice
+        else:
+            assert app.operation_failed
+        assert app.bubble is not None
+        capture(app.bubble, 'mascot-notice.png')
+        app.toggle_terminal()
+        tick()
+        capture(app.terminal.window, 'mascot-terminal.png')
+        app.toggle_terminal()
+        assert not app.terminal.visible
+        # A different, owned test window takes focus: terminal must dismiss.
+        app.toggle_terminal()
+        other = tk.Toplevel(root)
+        other.title('SAZABI focus test')
+        other.geometry('120x80+0+0')
+        other.focus_force()
+        tick(.3)
+        assert not app.terminal.visible, 'Click/focus outside should dismiss the terminal'
+        other.destroy()
         app.open_settings()
         tick()
-        if not mock:
-            from utils.http_client import FetchError
-            app.key_entry.insert(0, 'tvly-test-private-key')
-            with patch('core.connection.TavilySearch.check_connection', side_effect=FetchError('Chave inválida', status=401)):
-                app.connect_api()
-                wait()
-            assert 'inválida' in app.connection_status.get()
-            assert not Path(app.config.env_file).exists()
-            app.key_entry.insert(0, 'tvly-test-private-key')
-            with patch.dict(os.environ), patch('core.connection.TavilySearch.check_connection', return_value={'usage': 0, 'limit': 1000}):
-                app.connect_api()
-                wait()
-            assert 'conectada' in app.connection_status.get()
-            assert Path(app.config.env_file).exists()
-            assert not app.key_entry.get()
-            assert 'tvly-' not in app.output.get('1.0', 'end')
-            assert app.dashboard.source_label.cget('text') == 'Tavily conectada'
-        app.toggle_pause()
-        assert app.indicator.state == 'PAUSADO'
-        app.submit('/help')
-        assert not app.busy
-        app.toggle_pause()
-        assert app.indicator.state == 'ONLINE'
-        app.reduced_motion.set(True)
-        if '--screenshots' in sys.argv:
-            screenshot(app.settings_window, Path('data/desktop-previews/settings.png'))
-        app.settings_window.destroy()
-        app.open_ollama()
-        tick()
-        with patch('analysis.ai_provider.list_models', return_value=['test-local:1']):
-            app.ollama_action('list')
+        preferences = app.preferences
+        preferences.key.insert(0, 'tvly-test-private-key')
+        with patch.dict(os.environ), patch('core.connection.TavilySearch.check_connection', return_value={'usage': 0, 'limit': 1000}):
+            preferences.connect()
             wait()
-        assert app.ollama_model.get() == 'test-local:1'
+        assert 'conectada' in preferences.status.get()
+        assert not preferences.key.get()
+        with patch('analysis.ai_provider.list_models', return_value=['test-local:1']):
+            preferences.ollama('list')
+            wait()
         with patch.dict(os.environ), patch('analysis.ai_provider.OllamaProvider.check_model'):
-            app.ollama_action('activate')
+            preferences.ollama('activate')
             wait()
             assert app.config.ai_provider == 'ollama'
-            assert 'ativada' in app.ollama_status.get()
-            app.ollama_action('disable')
+            preferences.ollama('disable')
             wait()
             assert app.config.ai_provider == 'none'
-        app.ollama_window.destroy()
-        root.geometry('480x740')
-        tick()
-        assert app.compact and not app.sidebar.winfo_manager()
-        assert app.dashboard.compact
-        capture('compact.png')
-        app.open_search()
-        tick()
-        assert app.entry.winfo_width() > 180
-        app.entry.focus_force()
-        app.entry.event_generate('<Control-k>')
-        tick()
-        app.submit('/help')
-        wait()
-        assert '/search' in app.output.get('1.0', 'end')
+        capture(preferences.window, 'mascot-settings.png')
+        preferences.window.destroy()
+        app.always_on_top.set(False)
+        app.topmost_changed()
+        assert not bool(root.attributes('-topmost'))
         app.close()
         app.worker.thread.join(timeout=5)
         assert not app.worker.thread.is_alive()
-        print('PASS: native UI, ' + ('mock' if mock else 'without API') + ', metrics, navigation, pause, compact layout')
+        print('PASS: mascot, six poses, drag vs click, bounded terminal, background task, no focus theft, settings, shutdown')
     finally:
         app.worker.close()
         app.worker.thread.join(timeout=5)

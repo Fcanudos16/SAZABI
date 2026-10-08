@@ -2,7 +2,7 @@
 
 ## Primeira execução
 
-Execute `python main.py` ou `iniciar_sazabi.cmd`. Abra Configuração, informe sua chave Tavily e clique em Salvar e conectar. A chave é validada por `GET /usage` antes de substituir a configuração anterior. Uma falha de validação preserva a chave anterior.
+Execute `python main.py` ou `iniciar_sazabi.cmd` no Windows. A inicialização mostra somente o mascote, sem dashboard ou terminal aberto. Clique direito no personagem → Configuração, informe sua chave Tavily e clique em Salvar e conectar. A chave é validada por `GET /usage` antes de substituir a configuração anterior. Uma falha de validação preserva a chave anterior.
 
 A chave fica no `.env` local, não na conversa nem no banco. O arquivo é gravado por substituição atômica, preservando as outras variáveis. O campo é mascarado e limpo ao enviar. Proteja o acesso à sua pasta: o `.env` é texto local, não um cofre criptografado.
 
@@ -35,9 +35,17 @@ Robots não substitui termos de uso. Não há login, cookies autenticados, quebr
 
 ## Interface local
 
-Painel e conversa usam o mesmo banco. `ONLINE` significa que o agente local está pronto, não que a chave foi validada. A configuração mostra o resultado da validação. A janela continua respondendo durante a coleta; fechar aguarda a operação em andamento para encerrar o banco com segurança.
+O personagem usa seis poses locais, pré-carregadas da arte original. Estados de trabalho vêm de eventos do agente: análise do comando, consulta às fontes, processamento, resultados encontrados e entrega. Uma pesquisa vazia não emite FOUND. Falhas e páginas ainda não identificadas têm mensagens próprias; não são anunciadas como oportunidades qualificadas.
 
-Pausa bloqueia novos comandos da janela. Redução de animações e pausa valem para a sessão atual. O aplicativo não mantém rotina de prospecção contínua.
+Clique abre ou fecha o terminal. Arraste move o personagem e salva sua posição. O terminal tem até 620 × 440 px, sem maximização, e é posicionado na área útil do monitor próximo ao mascote. Escape, × ou perda de foco ocultam o terminal sem encerrar o agente. O resultado permanece na memória da sessão e pesquisas ficam no SQLite.
+
+O balão de conclusão dura 5,5 segundos ou até interação. Ele usa uma janela sem ativação para não roubar foco. O personagem não possui caixa de texto permanente. Sempre no topo e redução de movimento podem ser alternados no menu de contexto. O aplicativo não mantém rotina de prospecção contínua.
+
+Para sair, use Clique direito → Encerrar SAZABI, ou `sair` no terminal. O processo aguarda a tarefa atual para fechar o SQLite com segurança; as requisições mantêm seus timeouts. A janela pequena não executa comandos de shell: todas as entradas passam pelo roteador existente.
+
+O mascote usa APIs Win32/GDI+. A máscara da janela exclui somente o fundo quase branco conectado ao exterior de cada recorte; olhos brancos continuam opacos. O JPEG não é regravado, os pixels coloridos não são retocados e nenhum sprite é gerado por IA. Bordas claras presentes na compressão JPEG original podem continuar visíveis. A implementação não oferece mascote nativo em Linux/macOS; nesses sistemas use `--cli`.
+
+Posição e preferências são guardadas em `companion.json` ao lado do banco. Se um monitor for removido, a posição é limitada à área útil disponível na próxima abertura. Coordenadas de monitores negativos são tratadas por Win32; combinações de escalas DPI e monitores físicos precisam de validação no equipamento de destino.
 
 ## Banco e recuperação
 
@@ -55,7 +63,7 @@ Telegram: configure `TELEGRAM_BOT_TOKEN` e `TELEGRAM_ALLOWED_USER_IDS`, depois e
 
 IA local: configure `AI_PROVIDER=ollama`, `OLLAMA_MODEL` e disponibilize Ollama em `127.0.0.1:11434`. `/ai Nome` interpreta trechos, sem alterar evidências ou score. IA em nuvem não faz parte desta versão.
 
-Também pode configurar pela janela **Configuração → IA local (Ollama)**: liste modelos instalados, selecione e ative. O SAZABI consulta `/api/tags` e `/api/show` antes de ativar; modelos remotos e modelos sem capacidade de geração de texto são recusados. Ativação não baixa nem carrega um modelo. `/api/chat` executa a interpretação somente quando você pede `/ai` e existem evidências com fonte.
+Também pode configurar pelo menu do mascote **Configuração**, seção Ollama: clique em Atualizar, selecione e ative. O SAZABI consulta `/api/tags` e `/api/show` antes de ativar; modelos remotos e modelos sem capacidade de geração de texto são recusados. Ativação não baixa nem carrega um modelo. `/api/chat` executa a interpretação somente quando você pede `/ai` e existem evidências com fonte.
 
 Respostas incompletas, vazias, excessivas ou com chamadas de ferramentas são rejeitadas. O texto gerado é apresentado como interpretação não validada e não é incorporado ao histórico de evidências. Em falha, os relatórios determinísticos continuam disponíveis. Referências: [modelos instalados](https://docs.ollama.com/api/tags) e [chat](https://docs.ollama.com/api/chat).
 
@@ -63,7 +71,9 @@ Respostas incompletas, vazias, excessivas ou com chamadas de ferramentas são re
 
 `python -m pytest -q` executa os testes offline depois de instalar `requirements.txt`. Como alternativa de ambiente, instale em `.test-deps` e rode `python run_tests.py`.
 
-`python tests/native_desktop_check.py` verifica a janela real com bases em memória, incluindo configuração com respostas controladas. `--screenshots` captura somente as próprias janelas de teste em `data/desktop-previews/`.
+O runner cria diretórios únicos de teste em `data/test-runs/`, sem reutilizar nem apagar bases anteriores. `SAZABI_TEST_DEPS` permite indicar outra pasta de dependências de teste quando a pasta antiga estiver inacessível no Windows.
+
+`python tests/native_desktop_check.py` verifica inicialização só com mascote, seis poses, região transparente e olhos, arraste versus clique, limite do terminal, fechamento ao perder foco, conclusão sem roubar foco, configuração e encerramento. Usa banco em memória e respostas controladas. `--screenshots` captura somente as próprias janelas de teste em `data/desktop-previews/`; capturas com prefixo `fixture-` usam dados sintéticos exclusivos dos testes.
 
 `python tests/public_network_check.py` realiza GETs públicos sem credenciais e sem gravar empresas. Busca Tavily autenticada, Telegram e Ollama precisam de validação com sua conta/serviço. Não confunda teste offline com validação em produção.
 

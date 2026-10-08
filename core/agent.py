@@ -62,6 +62,11 @@ class SazabiAgent:
         self.notifications = NotificationRepository(db)
         self.memory = Memory(db, config.session_scope)
         self._pending: Optional[Dict] = None      # pergunta aguardando resposta (região / confirmação)
+        self.event_sink = None
+
+    def emit(self, kind, **data):
+        if self.event_sink:
+            self.event_sink(kind, data)
 
     # ------------------------------------------------------------------ entrada
     def handle(self, text: str) -> str:
@@ -75,23 +80,27 @@ class SazabiAgent:
             reply = self._dispatch(route(text), text)
         except Exception:
             log.exception("Erro ao processar mensagem")
+            self.emit('TASK_ERROR', message='Não consegui concluir o pedido.')
             reply = "Ocorreu um erro interno ao processar o pedido. O detalhe foi registrado no log."
         self.memory.log_turn("assistant", reply)
         return reply
 
     def _ai_summary(self, target):
         if self.config.mock or self.config.ai_provider != 'ollama':
-            return 'IA desativada. Abra Configuração → IA local (Ollama), selecione um modelo instalado e ative.'
+            return 'IA desativada. Clique direito no mascote → Configuração. Na seção Ollama, selecione um modelo instalado e ative.'
         profile, error = self._resolve_company(target)
         if error:
             return error
         try:
             from analysis.ai_provider import OllamaProvider
+            self.emit('TASK_PROCESSING', message='Interpretando evidências com Ollama local.')
             text = OllamaProvider(self.config.ollama_model).summarize(self.sources.list_for_company(profile.id))
             return 'Interpretação por IA (não validada; não altera dados nem prioridade):\n' + text
         except ValueError as error:
+            self.emit('TASK_ERROR', message='A interpretação local não foi concluída.')
             return 'Interpretação indisponível: ' + str(error)
         except Exception:
+            self.emit('TASK_ERROR', message='Ollama local indisponível.')
             return 'IA local indisponível. Os relatórios determinísticos continuam disponíveis.'
 
     def _dispatch(self, cmd: Command, text: str) -> str:
@@ -156,11 +165,14 @@ class SazabiAgent:
 
     def _run_search(self, criteria: SearchCriteria) -> str:
         if not self.finder.sources:
+            self.emit('TASK_ERROR', message='Configure sua chave Tavily para pesquisar.')
             return 'Pesquisa não iniciada. Abra Configuração e conecte sua chave Tavily, ou preencha SEARCH_API_KEY no .env.'
         run = self.runs.create(criteria)
         log.info("Pesquisa iniciada: %s", run.query)
         self.finder.errors, self.investigator.errors = [], []
+        self.emit('SEARCH_STARTED', message='Buscando fontes públicas.')
         raws = self.finder.find(criteria)
+        self.emit('SEARCH_PROCESSING', message='Organizando e verificando os resultados.')
         for hit in self.finder.hits:
             self.db.execute('INSERT INTO discovery_results (run_id,title,url,snippet,retrieved_at,status,reason) VALUES (?,?,?,?,?,?,?)',
                             (run.id, *(hit[key] for key in ('title', 'url', 'snippet', 'retrieved_at', 'status', 'reason'))))
@@ -210,6 +222,17 @@ class SazabiAgent:
         reply += reports.format_discovery(self.finder.hits)
         if self.finder.sources and not (errors and not raws):
             self._notify_run(run, criteria, ranked)
+        pending = sum(hit['status'] == 'pending' for hit in self.finder.hits)
+        if run.status == 'failed':
+            self.emit('TASK_ERROR', message='Não consegui concluir essa pesquisa.')
+        else:
+            if ranked or pending:
+                self.emit('SEARCH_RESULT_FOUND', companies=len(ranked), pages=pending,
+                          message=f'{len(ranked)} empresas e {pending} páginas pendentes.')
+            self.emit('SEARCH_COMPLETED', companies=len(ranked), pages=pending,
+                      message=('Pesquisa parcial; veja as limitações.' if run.status == 'partial' else
+                               f'Pesquisa concluída: {len(ranked)} empresas, {pending} páginas pendentes.'
+                               if ranked or pending else 'Não encontrei resultados nesta pesquisa.'))
         return reply
 
     def _notify_run(self, run, criteria: SearchCriteria, ranked) -> None:
@@ -236,6 +259,8 @@ class SazabiAgent:
     # ------------------------------------------------------------------ investigação
     def _investigate(self, profile: CompanyProfile, refresh: bool) -> Outcome:
         stored = self.sources.list_for_company(profile.id)
+        self.emit('TASK_PROCESSING' if not refresh and self.investigator.is_fresh(profile) else 'SEARCH_STARTED',
+                  message='Consultando evidências de ' + profile.name + '.')
         result = self.investigator.investigate(profile, refresh=refresh, stored=stored)
         if result.from_cache:
             profile.observations = result.observations
@@ -243,6 +268,7 @@ class SazabiAgent:
             profile.hypotheses = self.hypotheses.list_for_company(profile.id)
             return Outcome(profile, result.observations, profile.signals, profile.hypotheses, True)
 
+        self.emit('SEARCH_PROCESSING', message='Analisando evidências de ' + profile.name + '.')
         signals = self.detector.detect(profile, result.observations)
         hypotheses = self.analyzer.analyze(profile, signals)
         self.sources.replace_for_company(profile.id, result.observations)
@@ -274,6 +300,7 @@ class SazabiAgent:
         if matches:
             return matches[0], None
         if allow_lookup:
+            self.emit('SEARCH_STARTED', message='Identificando a empresa nas fontes.')
             raw = self.finder.lookup(target)
             if raw:
                 profile = build_profile(raw)
@@ -290,11 +317,13 @@ class SazabiAgent:
         self.investigator.errors = []
         profile, msg = self._resolve_company(target, allow_lookup=True)
         if msg:
+            self.emit('TASK_ERROR', message='Não foi possível identificar a empresa. Veja o terminal.')
             return msg
         outcome = self._investigate(profile, refresh=refresh)
         self.memory.set_last_company(profile.id)
         text = self._company_report(profile, outcome)
         if self.investigator.errors:
+            self.emit('TASK_ERROR', message='Investigação com fontes indisponíveis; veja o terminal.')
             text += '\n\nFonte indisponível nesta tentativa; dados anteriores não confirmam a situação atual.'
         if outcome.from_cache:
             text += (f"\n\n(Resultado em cache da pesquisa de {reports.fmt_date(profile.last_researched)}. "

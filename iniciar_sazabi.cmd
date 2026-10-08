@@ -1,12 +1,14 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" main.py
+if exist ".venv\Scripts\pythonw.exe" (
+    start "" ".venv\Scripts\pythonw.exe" "%~dp0iniciar_sazabi.pyw"
 ) else (
-    python main.py
-)
-if errorlevel 1 (
-    echo Nao foi possivel iniciar. Instale Python 3.9+ com Tcl/Tk e adicione Python ao PATH.
-    pause
+    where pythonw.exe >nul 2>&1
+    if errorlevel 1 (
+        echo Instale Python 3.9+ com Tcl/Tk e adicione Python ao PATH.
+        pause
+        exit /b 1
+    )
+    start "" pythonw.exe "%~dp0iniciar_sazabi.pyw"
 )
