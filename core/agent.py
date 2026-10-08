@@ -168,6 +168,16 @@ class SazabiAgent:
             self.emit('TASK_ERROR', message='Configure sua chave Tavily para pesquisar.')
             return 'Pesquisa não iniciada. Abra Configuração e conecte sua chave Tavily, ou preencha SEARCH_API_KEY no .env.'
         run = self.runs.create(criteria)
+        try:
+            return self._execute_search(criteria, run)
+        except Exception:
+            run.status = 'failed'
+            run.error_message = 'Pesquisa interrompida por erro interno; resultados podem estar incompletos.'
+            self.runs.finish(run)
+            self.memory.set_last_run(run.id)
+            raise
+
+    def _execute_search(self, criteria, run):
         log.info("Pesquisa iniciada: %s", run.query)
         self.finder.errors, self.investigator.errors = [], []
         self.emit('SEARCH_STARTED', message='Buscando fontes públicas.')
@@ -262,24 +272,25 @@ class SazabiAgent:
         self.emit('TASK_PROCESSING' if not refresh and self.investigator.is_fresh(profile) else 'SEARCH_STARTED',
                   message='Consultando evidências de ' + profile.name + '.')
         result = self.investigator.investigate(profile, refresh=refresh, stored=stored)
-        if result.from_cache:
+        if result.from_cache or result.failed:
             profile.observations = result.observations
             profile.signals = self.signals.list_for_company(profile.id)
             profile.hypotheses = self.hypotheses.list_for_company(profile.id)
-            return Outcome(profile, result.observations, profile.signals, profile.hypotheses, True)
+            return Outcome(profile, result.observations, profile.signals, profile.hypotheses, result.from_cache)
 
         self.emit('SEARCH_PROCESSING', message='Analisando evidências de ' + profile.name + '.')
         signals = self.detector.detect(profile, result.observations)
         hypotheses = self.analyzer.analyze(profile, signals)
-        self.sources.replace_for_company(profile.id, result.observations)
-        self.signals.replace_for_company(profile.id, signals)
-        self.hypotheses.replace_for_company(profile.id, hypotheses)
-        profile.observations, profile.signals, profile.hypotheses = result.observations, signals, hypotheses
-        profile.investigated, profile.last_researched = True, now_iso()
-        if profile.status == "NEW":
-            self.companies.set_status(profile.id, "RESEARCHED")
-            profile.status = "RESEARCHED"
-        self.companies.update(profile)
+        with self.db.transaction():
+            self.sources.replace_for_company(profile.id, result.observations)
+            self.signals.replace_for_company(profile.id, signals)
+            self.hypotheses.replace_for_company(profile.id, hypotheses)
+            profile.observations, profile.signals, profile.hypotheses = result.observations, signals, hypotheses
+            profile.investigated, profile.last_researched = True, now_iso()
+            if profile.status == "NEW":
+                self.companies.set_status(profile.id, "RESEARCHED")
+                profile.status = "RESEARCHED"
+            self.companies.update(profile)
         return Outcome(profile, result.observations, signals, hypotheses, False)
 
     def _resolve_company(self, target: Optional[str], allow_lookup: bool = False

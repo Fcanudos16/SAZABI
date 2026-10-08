@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import math
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,7 +41,7 @@ def read_env_file(path: str) -> Dict[str, str]:
     p = Path(path)
     if not p.is_file():
         return values
-    for line in p.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -55,7 +57,7 @@ def read_services(path: str) -> List[str]:
         return list(DEFAULT_SERVICES)
     items: List[str] = []
     in_block = False
-    for line in p.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8-sig").splitlines():
         line = line.split("#", 1)[0].rstrip()
         if not line.strip():
             continue
@@ -82,6 +84,16 @@ def load_config(env_file: str = ".env", services_file: str = "services.yaml",
         ttl = float(get("CACHE_TTL_HOURS", "24"))
     except ValueError:
         ttl = 24.0
+    if not math.isfinite(ttl) or ttl < 0:
+        ttl = 24.0
+    try:
+        allowed_ids = tuple(int(x.strip()) for x in get('TELEGRAM_ALLOWED_USER_IDS', '').split(',') if x.strip())
+        if any(uid <= 0 for uid in allowed_ids):
+            raise ValueError
+    except ValueError:
+        # Fail closed for Telegram, but do not disable the unrelated desktop UI.
+        allowed_ids = ()
+        logging.getLogger('sazabi.config').warning('Lista de usuários Telegram inválida; acesso Telegram desabilitado.')
     try:
         search_limit = min(20, max(1, int(get('SEARCH_LIMIT', '5'))))
     except ValueError:
@@ -93,5 +105,5 @@ def load_config(env_file: str = ".env", services_file: str = "services.yaml",
                   search_api_key=get('SEARCH_API_KEY', ''),
                   search_limit=search_limit,
                   telegram_token=get('TELEGRAM_BOT_TOKEN', ''),
-                  telegram_allowed_ids=tuple(int(x.strip()) for x in get('TELEGRAM_ALLOWED_USER_IDS', '').split(',') if x.strip()),
+                  telegram_allowed_ids=allowed_ids,
                   ai_provider=get('AI_PROVIDER', 'none'), ollama_model=get('OLLAMA_MODEL', ''))

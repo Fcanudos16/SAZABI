@@ -16,6 +16,7 @@ log = logging.getLogger("sazabi.investigator")
 class InvestigationResult:
     observations: List[Observation]
     from_cache: bool
+    failed: bool = False
 
 
 class CompanyInvestigator:
@@ -33,6 +34,9 @@ class CompanyInvestigator:
         if not refresh and self.is_fresh(profile):
             log.info("Cache usado para %s", profile.name)
             return InvestigationResult(list(stored or []), True)
+        if not self.sources:
+            self.errors.append('Nenhuma fonte configurada; investigação não atualizada.')
+            return InvestigationResult(list(stored or []), bool(stored), failed=True)
         collected = [] if profile.investigated else list(profile.observations)
         current_errors = []
         for source in self.sources:
@@ -47,8 +51,8 @@ class CompanyInvestigator:
                 current_errors.append(source.name + ': ' + detail)
         self.errors.extend(current_errors)
         now, seen, observations = now_iso(), set(), []
-        if current_errors and not collected and stored:
-            return InvestigationResult(list(stored), True)
+        if current_errors:
+            return InvestigationResult(list(stored or []), bool(stored), failed=True)
         for o in collected:
             if (o.text, o.url) in seen:
                 continue

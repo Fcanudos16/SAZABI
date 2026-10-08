@@ -46,7 +46,7 @@ class PinnedHTTP(http.client.HTTPConnection):
 class HttpClient:
     def __init__(self, interval=1.0, timeout=15, max_bytes=1_000_000):
         self.interval, self.timeout, self.max_bytes = interval, timeout, max_bytes
-        self.last, self.blocked = {}, set()
+        self.last, self.blocked, self.retry_after = {}, set(), {}
 
     def request(self, url, payload=None, headers=None, allow_http=False):
         try:
@@ -61,6 +61,8 @@ class HttpClient:
         host = parts.hostname
         if host in self.blocked:
             raise FetchError('Fonte suspensa nesta sessão')
+        if time.monotonic() < self.retry_after.get(host, 0):
+            raise FetchError('Limite de requisições atingido. Aguarde antes de tentar novamente.', 429)
         for attempt in range(3 if payload is None else 1):
             time.sleep(max(0, self.interval - (time.monotonic() - self.last.get(host, 0))))
             conn = None
@@ -77,7 +79,10 @@ class HttpClient:
                              (parts.path or '/') + ('?' + parts.query if parts.query else ''), body, request_headers)
                 response = conn.getresponse()
                 if response.status in (401, 403, 429, 432, 433):
-                    self.blocked.add(host)
+                    if response.status == 429:
+                        self.retry_after[host] = time.monotonic() + 60
+                    else:
+                        self.blocked.add(host)
                     messages = {401: 'Chave API inválida ou sem autorização. Confira a configuração.',
                                 403: 'Acesso recusado pela fonte.', 429: 'Limite de requisições atingido. Aguarde antes de tentar novamente.',
                                 432: 'Créditos ou limite do plano Tavily esgotados.', 433: 'Limite de cobrança da Tavily atingido.'}
@@ -114,8 +119,7 @@ class HttpClient:
                     return data.decode('utf-8', errors='replace')
             except (OSError, http.client.HTTPException):
                 if payload is not None or attempt == 2:
-                    self.blocked.add(host)
-                    raise FetchError('Falha de conexão; fonte suspensa') from None
+                    raise FetchError('Falha de conexão. Tente novamente quando a rede estiver disponível.') from None
                 time.sleep(2 ** attempt)
             finally:
                 if conn is not None:

@@ -134,3 +134,12 @@ Sites podem bloquear coleta, exigir JavaScript ou não publicar identidade sufic
 Credenciais, banco, logs e backups ficam fora do Git. Para distribuir o projeto, use o repositório; não copie sua pasta `.env` ou `data/` para uma instalação nova.
 
 O mascote usa animações lentas e discretas permanentemente; não há opção de reduzir movimento. Preferências antigas dessa opção são ignoradas. O monitor usa apenas métricas locais, sem chave de API. Se uma leitura falhar na apresentação, a janela informa o erro e tenta novamente automaticamente.
+
+
+### Recuperação de falhas
+
+- Investigações sem fontes ou com falha em uma fonte preservam o último conjunto de evidências e a data anterior. Uma coleta incompleta não renova o cache nem apaga o histórico; o relatório informa a limitação.
+- Evidências, sinais, hipóteses e data de investigação são gravados em uma transação. Uma falha de gravação desfaz esse conjunto de alterações.
+- Uma exceção durante a pesquisa finaliza o registro como falha, preservando resultados parciais já gravados.
+- Após queda de conexão, uma nova solicitação pode tentar novamente sem reiniciar o aplicativo. Respostas HTTP 429 aplicam uma pausa de 60 segundos.
+- Arquivos `.env` com BOM do Windows são aceitos. TTL inválido volta a 24 horas; lista Telegram inválida desabilita o acesso Telegram sem impedir o desktop.

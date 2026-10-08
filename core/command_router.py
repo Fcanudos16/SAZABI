@@ -158,7 +158,10 @@ def _route_natural(raw: str) -> Command:
             return Command(name, target=_clean_target(m.group(1), True))
     m = _INVESTIGATE.match(raw)
     if m:
-        return Command("investigate", target=_clean_target(m.group("rest"), True), refresh=bool(m.group("again")))
+        rest = m.group("rest")
+        if m.group("again"):
+            rest = re.sub(r"^(?:da|do|de|das|dos)\s+", "", rest, flags=re.I)
+        return Command("investigate", target=_clean_target(rest, True), refresh=bool(m.group("again")))
     m = _INVESTIGATE_COMPANY.match(raw)
     if m:
         return Command("investigate", target=_clean_target(m.group("rest"), True))

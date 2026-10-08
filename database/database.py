@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -112,6 +113,7 @@ class Database:
     def __init__(self, path: str = "data/sazabi.db"):
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self._transaction_depth = 0
         self.path = path
         self.conn = sqlite3.connect(path)
         self.conn.row_factory = sqlite3.Row
@@ -126,8 +128,23 @@ class Database:
             self.conn.execute("ALTER TABLE research_runs ADD COLUMN error_message TEXT NOT NULL DEFAULT ''")
         self.conn.commit()
 
+    @contextmanager
+    def transaction(self):
+        """Nest safely without committing a caller's larger write operation."""
+        name = 'sazabi_tx_' + str(self._transaction_depth)
+        self.conn.execute('SAVEPOINT ' + name)
+        self._transaction_depth += 1
+        try:
+            yield
+        except BaseException:
+            self.conn.execute('ROLLBACK TO SAVEPOINT ' + name)
+            raise
+        finally:
+            self._transaction_depth -= 1
+            self.conn.execute('RELEASE SAVEPOINT ' + name)
+
     def execute(self, sql: str, params: Iterable = ()) -> sqlite3.Cursor:
-        with self.conn:
+        with self.transaction():
             return self.conn.execute(sql, tuple(params))
 
     def query(self, sql: str, params: Iterable = ()) -> List[sqlite3.Row]:

@@ -129,7 +129,7 @@ class SourceRepository:
         self.db = db
 
     def replace_for_company(self, company_id: str, observations: Sequence[Observation]) -> None:
-        with self.db.conn:
+        with self.db.transaction():
             self.db.conn.execute("DELETE FROM sources WHERE company_id=?", (company_id,))
             self.db.conn.executemany(
                 "INSERT INTO sources (company_id, source_name, url, text, retrieved_at) VALUES (?,?,?,?,?)",
@@ -145,7 +145,7 @@ class SignalRepository:
         self.db = db
 
     def replace_for_company(self, company_id: str, signals: Sequence[Signal]) -> None:
-        with self.db.conn:
+        with self.db.transaction():
             self.db.conn.execute("DELETE FROM signals WHERE company_id=?", (company_id,))
             self.db.conn.executemany(
                 "INSERT INTO signals (company_id, type, description, source, source_url, evidence, "
@@ -176,7 +176,7 @@ class HypothesisRepository:
         self.db = db
 
     def replace_for_company(self, company_id: str, hypotheses: Sequence[Hypothesis]) -> None:
-        with self.db.conn:
+        with self.db.transaction():
             self.db.conn.execute("DELETE FROM hypotheses WHERE company_id=?", (company_id,))
             self.db.conn.executemany(
                 "INSERT INTO hypotheses (company_id, solution, reasons, evidence_level, created_at) "
