@@ -116,6 +116,66 @@ def run(mock=False):
         app.reduced_motion.set(True)
         assert app.motion_job is None and app.motion_offset == (0, 0)
         app.hover(False)
+        # Exercise the actual compositor, sleep effects and wake-up on Windows.
+        app.reduced_motion.set(False)
+        foreground = native.api()[0].GetForegroundWindow()
+        app.set_state('ANALYZING')
+        tick(.12)
+        assert app.transitions.ghost is not None
+        assert 0 < float(root.attributes('-alpha')) < 1
+        tick(.4)
+        assert app.transitions.ghost is None and float(root.attributes('-alpha')) == 1
+        assert native.api()[0].GetForegroundWindow() == foreground
+        app.set_state('IDLE')
+        tick(.4)
+        app.animation.idle.blink_start = time.monotonic()
+        tick(.1)
+        assert app.renderer.level > 0, 'Blink overlay must close the original eyes'
+        capture(root, 'mascot-blinking.png')
+        tick(.2)
+        assert app.renderer.level == 0
+        app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
+        app.drag(SimpleNamespace(x_root=app.x+65, y_root=app.y+110))
+        app.animation.idle.blink_start = time.monotonic()
+        tick(.1)
+        assert app.renderer.level > 0 and app.state == 'IDLE', 'Drag must keep presentation animation alive'
+        app.release(None)
+        tick(.2)
+        app.animation.sleep.last_activity = time.monotonic()-121
+        tick(1.6)
+        assert app.animation.sleep.phase == 'SLEEPING'
+        assert app.renderer.level == 8
+        assert all(app.renderer.lids[state] for state in app.atlas.images)
+        app.sleep_bubbles.next_at = time.monotonic()
+        tick(.4)
+        assert 1 <= len(app.sleep_bubbles.items) <= 2
+        assert native.api()[0].GetForegroundWindow() == foreground
+        capture(root, 'mascot-sleeping.png')
+        capture(app.sleep_bubbles.items[0]['window'], 'sleep-effect.png')
+        app.touch()
+        assert app.animation.sleep.phase == 'WAKE_UP'
+        assert not app.sleep_bubbles.items
+        tick(.8)
+        assert app.animation.sleep.phase == 'IDLE'
+        app.animation.sleep.last_activity = time.monotonic()-121
+        app.set_busy(True)
+        tick(1.5)
+        assert app.animation.sleep.phase == 'IDLE', 'Working must block sleep'
+        app.set_busy(False)
+        app.sleep_after.set(0)
+        app.sleep_timeout_changed()
+        app.animation.sleep.last_activity = time.monotonic()-999
+        tick(.3)
+        assert app.animation.sleep.phase == 'IDLE'
+        app.sleep_after.set(120)
+        app.sleep_timeout_changed()
+        app.notify('Animação de notificação · teste local')
+        tick(.12)
+        assert 0 < float(app.bubble.attributes('-alpha')) < 1
+        app.dismiss_bubble()
+        tick(.3)
+        assert app.bubble is None
+        app.reduced_motion.set(True)
         # Windows owns the exact shape: exterior pixels are not clickable, eyes are.
         user, gdi = native.api()
         gdi.CreateRectRgn.argtypes, gdi.CreateRectRgn.restype = [ctypes.c_int]*4, wintypes.HANDLE
@@ -203,7 +263,7 @@ def run(mock=False):
         app.close()
         app.worker.thread.join(timeout=5)
         assert not app.worker.thread.is_alive()
-        print('PASS: mascot, animation, hover pause, reduced motion, six poses, drag vs click, bounded terminal, background task, no focus theft, settings, shutdown')
+        print('PASS: mascot, crossfade, blinking, sleep/wake, bubbles, notifications, task priority, reduced motion, drag/click, terminal, focus, settings, shutdown')
     finally:
         app.worker.close()
         app.worker.thread.join(timeout=5)

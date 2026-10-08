@@ -45,7 +45,11 @@ Para sair, use Clique direito → Encerrar SAZABI, ou `sair` no terminal. O proc
 
 O mascote usa APIs Win32/GDI+. A máscara da janela exclui o fundo claro e a franja do JPEG conectados ao exterior de cada recorte; olhos brancos continuam opacos. O JPEG não é regravado, os pixels coloridos não são retocados e nenhum sprite é gerado por IA. A implementação não oferece mascote nativo em Linux/macOS; nesses sistemas use `--cli`.
 
-O personagem flutua discretamente e muda o movimento conforme o estado de trabalho. Ele para sob o cursor para facilitar o clique. Clique direito → Reduzir movimento desativa as animações. A barra de rolagem do terminal acompanha o tema preto e verde.
+O personagem respira por deslocamentos sutis, pisca em intervalos variados e faz transições suaves entre as seis expressões. Sob o cursor e durante o arraste, a translação autônoma pausa, mas as piscadas continuam. Clique direito → Reduzir movimento desativa as animações. A barra de rolagem do terminal acompanha o tema preto e verde.
+
+Sem interação ou tarefa por dois minutos, ele fecha os olhos por máscaras de composição e dorme com pequenas bolhas. Clique ou comando o acorda; pesquisa em andamento impede sono. **Clique direito → Dormir após** permite Nunca, 1, 2 ou 5 minutos. O terminal aberto também impede sono. Os tempos detalhados e a opção de acordar ao passar o cursor ficam em `assets/sazabi/animation.json`; reinicie após editar esse arquivo. Nenhuma animação requer chave de API.
+
+A arte plana não contém camadas separadas de cabeça e torso. Não há inclinação isolada da cabeça nem deformação do corpo: os pequenos movimentos do conjunto preservam sua arte. As pálpebras são sobreposições temporárias, sem editar o JPEG ou gerar novas poses.
 
 Posição e preferências são guardadas em `companion.json` ao lado do banco. Se um monitor for removido, a posição é limitada à área útil disponível na próxima abertura. Coordenadas de monitores negativos são tratadas por Win32; combinações de escalas DPI e monitores físicos precisam de validação no equipamento de destino.
 

@@ -119,7 +119,7 @@ class SpriteAtlas:
             raise RuntimeError('A arte original foi alterada. Confira assets/sazabi/states.json.')
         width, height, pixels = decode_jpeg(path)
         self.width, self.height = self.config['canvas']
-        self.images, self.regions, self.masks = {}, {}, {}
+        self.images, self.regions, self.masks, self.pixels = {}, {}, {}, {}
         for state, (left, top, right, bottom) in self.config['states'].items():
             if not (0 <= left < right <= width and 0 <= top < bottom <= height):
                 raise RuntimeError('Recorte de exibição inválido: ' + state)
@@ -138,5 +138,6 @@ class SpriteAtlas:
                 full_mask[index:index+w] = mask[y*w:(y+1)*w]
             ppm = f'P6\n{self.width} {self.height}\n255\n'.encode() + display
             self.images[state] = tk.PhotoImage(master=root, data=ppm, format='PPM')
+            self.pixels[state] = bytes(display)
             self.masks[state] = bytes(full_mask)
             self.regions[state] = region_data(full_mask, self.width, self.height)

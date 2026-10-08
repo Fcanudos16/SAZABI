@@ -8,10 +8,13 @@ from queue import Empty
 
 from core.bootstrap import build_agent
 from core.worker import AgentWorker
-from ui.sprites import SpriteAtlas
+from ui.sprites import SpriteAtlas, ASSETS
 from ui.terminal import ResultTerminal, BG, FG, FONT
 from ui import native
 from ui.motion import offset
+from ui.behavior import SazabiAnimationController, validate_settings
+from ui.renderer import SazabiRenderer, SazabiTransitionController
+from ui.effects import SleepBubbles, SazabiNotificationController
 
 
 STATE_EVENTS = {
@@ -28,8 +31,8 @@ class CompanionApp:
         root.withdraw()
         self.busy, self.ready, self.failed, self.closing = True, False, False, False
         self.terminal, self.preferences, self.bubble = None, None, None
-        self.poll_job, self.idle_job, self.bubble_job = None, None, None
-        self.response_job, self.fade_job, self.found_until = None, None, 0
+        self.poll_job, self.idle_job = None, None
+        self.response_job, self.found_until = None, 0
         self.motion_job, self.motion_offset = None, (0, 0)
         self.motion_started, self.hovered = time.monotonic(), False
         self.state, self.notice, self.operation_failed = 'IDLE', None, False
@@ -37,6 +40,10 @@ class CompanionApp:
         self.always_on_top = tk.BooleanVar(root, True)
         self.reduced_motion = tk.BooleanVar(root, False)
         self.atlas = SpriteAtlas(root)
+        self.animation_settings = validate_settings(json.loads((ASSETS / 'animation.json').read_text(encoding='utf-8')))
+        self.animation = SazabiAnimationController(time.monotonic(), self.animation_settings)
+        self.sleep_after = tk.IntVar(root, self.animation_settings['sleep_after_seconds'])
+        self.life_job = None
         self.x, self.y = 0, 0
         self.position_file = None if config.database_path == ':memory:' else Path(config.database_path).parent / 'companion.json'
         self._restore()
@@ -64,6 +71,10 @@ class CompanionApp:
         root.deiconify()
         native.show_passive(root, self.x, self.y, self.atlas.width, self.atlas.height, self.always_on_top.get())
         self._drag = None
+        self.renderer = SazabiRenderer(self)
+        self.transitions = SazabiTransitionController(self, self.renderer)
+        self.sleep_bubbles = SleepBubbles(self, self.animation.rng)
+        self.notifications = SazabiNotificationController(self)
         self.canvas.bind('<ButtonPress-1>', self.press)
         self.canvas.bind('<B1-Motion>', self.drag)
         self.canvas.bind('<ButtonRelease-1>', self.release)
@@ -76,9 +87,29 @@ class CompanionApp:
         self.worker = AgentWorker(config, factory=factory, progress=True)
         self.poll_job = root.after(75, self.poll)
         self.motion_tick()
+        self.life_tick()
 
     def hover(self, value):
         self.hovered = value  # Hold still while the user aims at or drags the mascot.
+        if value and self.animation_settings['hover_wakes']:
+            self.touch()
+
+    def touch(self):
+        self.animation.touch(time.monotonic())
+        self.sleep_bubbles.clear()
+
+    def sleep_timeout_changed(self):
+        self.animation.sleep.timeout = self.sleep_after.get()
+        self.touch()
+        self._save()
+
+    def life_tick(self):
+        self.life_job = None
+        if self.closing:
+            return
+        self.animation.sleep.update(time.monotonic(), self.busy or self.failed or self.state != 'IDLE'
+                                    or bool(self._drag) or bool(self.terminal and self.terminal.visible))
+        self.life_job = self.root.after(250, self.life_tick)
 
     def motion_changed(self, *args):
         if self.motion_job:
@@ -88,10 +119,10 @@ class CompanionApp:
         if self.reduced_motion.get():
             self.motion_offset = (0, 0)
             native.position(self.root, self.x, self.y)
-            if self.fade_job:
-                self.root.after_cancel(self.fade_job)
-                self.fade_job = None
             self.root.attributes('-alpha', 1)
+            self.transitions.finish()
+            self.renderer.blink(0)
+            self.sleep_bubbles.clear()
         else:
             self.motion_tick()
 
@@ -99,8 +130,20 @@ class CompanionApp:
         self.motion_job = None
         if self.closing or self.reduced_motion.get():
             return
+        if not self.root.winfo_viewable():
+            self.sleep_bubbles.clear()
+            self.motion_job = self.root.after(500, self.motion_tick)
+            return
+        now = time.monotonic()
+        mx, my, blink, phase = self.animation.sample(now, self.state, self.busy, self.failed,
+                                                    bool(self._drag) or bool(self.terminal and self.terminal.visible))
+        self.renderer.blink(blink if self.animation_settings['blink_enabled'] else 0)
+        self.sleep_bubbles.update(now, phase == 'SLEEPING')
         if not self._drag and not self.hovered:
-            dx, dy = offset(self.state, time.monotonic()-self.motion_started)
+            dx, dy = mx, my
+            if self.state in ('FOUND', 'RESPONDING'):
+                rx, ry = offset(self.state, now-self.motion_started)
+                dx, dy = dx+rx, dy+ry
             left, top, right, bottom = self.area
             dx = max(left, min(self.x+dx, right-self.atlas.width))-self.x
             dy = max(top, min(self.y+dy, bottom-self.atlas.height))-self.y
@@ -118,6 +161,10 @@ class CompanionApp:
                     self.x = self.y = 0
                 self.always_on_top.set(bool(data.get('topmost', True)))
                 self.reduced_motion.set(bool(data.get('reduced_motion', False)))
+                timeout = data.get('sleep_after_seconds', self.animation.sleep.timeout)
+                if isinstance(timeout, int) and 0 <= timeout <= 86400:
+                    self.sleep_after.set(timeout)
+                    self.animation.sleep.timeout = timeout
             except (OSError, ValueError, TypeError, KeyError):
                 pass
 
@@ -127,7 +174,8 @@ class CompanionApp:
                 self.position_file.parent.mkdir(parents=True, exist_ok=True)
                 temporary = self.position_file.with_suffix('.tmp')
                 temporary.write_text(json.dumps({'x': self.x, 'y': self.y, 'topmost': self.always_on_top.get(),
-                                                'reduced_motion': self.reduced_motion.get()}), encoding='utf-8')
+                                                'reduced_motion': self.reduced_motion.get(),
+                                                'sleep_after_seconds': self.sleep_after.get()}), encoding='utf-8')
                 temporary.replace(self.position_file)
             except OSError:
                 self.notify('Não foi possível salvar a posição do mascote.')
@@ -138,6 +186,7 @@ class CompanionApp:
         self.y = max(top, min(self.y, bottom-self.atlas.height))
 
     def press(self, event):
+        self.touch()
         self.dismiss_bubble()
         self.motion_offset = (0, 0)
         native.position(self.root, self.x, self.y)
@@ -171,6 +220,7 @@ class CompanionApp:
         return self.terminal
 
     def toggle_terminal(self):
+        self.touch()
         terminal = self.get_terminal()
         self.dismiss_bubble()
         if terminal.visible:
@@ -180,6 +230,7 @@ class CompanionApp:
             terminal.busy(self.busy or self.failed or self.closing)
 
     def open_search(self):
+        self.touch()
         terminal = self.get_terminal()
         terminal.show()
         if not self.busy:
@@ -188,6 +239,7 @@ class CompanionApp:
             terminal.entry.icursor('end')
 
     def open_settings(self):
+        self.touch()
         if self.preferences and self.preferences.window.winfo_exists():
             self.preferences.window.lift()
             return
@@ -195,6 +247,7 @@ class CompanionApp:
         self.preferences = Preferences(self)
 
     def context_menu(self, event):
+        self.touch()
         menu = tk.Menu(self.root, tearoff=False, bg=BG, fg=FG, font=FONT)
         menu.add_command(label='Abrir / fechar terminal', command=self.toggle_terminal)
         menu.add_command(label='Nova pesquisa', command=self.open_search)
@@ -202,6 +255,11 @@ class CompanionApp:
         menu.add_separator()
         menu.add_checkbutton(label='Sempre no topo', variable=self.always_on_top, command=self.topmost_changed)
         menu.add_checkbutton(label='Reduzir movimento', variable=self.reduced_motion, command=self._save)
+        sleep_menu = tk.Menu(menu, tearoff=False, bg=BG, fg=FG, font=FONT)
+        for label, seconds in [('Nunca', 0), ('1 minuto', 60), ('2 minutos', 120), ('5 minutos', 300)]:
+            sleep_menu.add_radiobutton(label=label, value=seconds, variable=self.sleep_after,
+                                       command=self.sleep_timeout_changed)
+        menu.add_cascade(label='Dormir após', menu=sleep_menu)
         menu.add_separator()
         menu.add_command(label='Encerrar SAZABI', command=self.close)
         try:
@@ -233,22 +291,13 @@ class CompanionApp:
         self.motion_started = time.monotonic()
         self.state_history.append(state)
         self.state_history = self.state_history[-100:]
-        self.canvas.itemconfigure(self.sprite, image=self.atlas.images[state])
-        native.shape(self.root, self.atlas.regions[state])
-        if self.fade_job:
-            self.root.after_cancel(self.fade_job)
-            self.fade_job = None
-        if not self.reduced_motion.get():
-            # Fade the window, never change or scale the source image pixels.
-            self.root.attributes('-alpha', .94)
-            self.fade_job = self.root.after(80, self._end_fade)
-        else:
-            self.root.attributes('-alpha', 1)
+        self.transitions.start(state)
         if self.terminal:
             self.terminal.status.set(state + (' · tarefa em andamento' if self.busy else ' · pronto'))
 
     def set_busy(self, value):
         self.busy = value
+        self.touch()
         if self.terminal:
             self.terminal.busy(value or self.failed or self.closing)
             self.terminal.status.set(self.state + (' · tarefa em andamento' if value else ' · resposta disponível'))
@@ -256,6 +305,7 @@ class CompanionApp:
             self.preferences.busy(value)
 
     def submit(self, command=None):
+        self.touch()
         if self.busy or self.failed or self.closing:
             return
         terminal = self.get_terminal()
@@ -283,6 +333,7 @@ class CompanionApp:
         self.worker.commands.put(text)
 
     def queue_request(self, request):
+        self.touch()
         if self.busy or self.failed or self.closing:
             return
         if self.idle_job:
@@ -293,34 +344,10 @@ class CompanionApp:
         self.worker.commands.put(request)
 
     def notify(self, text):
-        self.dismiss_bubble()
-        if self.closing:
-            return
-        window = self.bubble = tk.Toplevel(self.root)
-        window.withdraw()
-        window.overrideredirect(True)
-        window.configure(bg='#254331')
-        label = tk.Label(window, text=text[:180], bg=BG, fg=FG, font=('Consolas', 9),
-                         wraplength=240, padx=12, pady=9, justify='left')
-        label.pack(padx=1, pady=1)
-        label.bind('<Button-1>', lambda e: self.dismiss_bubble())
-        window.update_idletasks()
-        w, h = window.winfo_reqwidth(), window.winfo_reqheight()
-        x, y = native.place_near(self.x, self.y, self.atlas.width, self.atlas.height, w, h, native.work_area(self.root))
-        window.geometry(f'{w}x{h}{x:+d}{y:+d}')
-        window.update_idletasks()
-        native.no_activate(window)
-        window.deiconify()
-        native.show_passive(window, x, y, w, h, self.always_on_top.get())
-        self.bubble_job = self.root.after(5500, self.dismiss_bubble)
+        self.notifications.show(text)
 
     def dismiss_bubble(self):
-        if self.bubble_job:
-            self.root.after_cancel(self.bubble_job)
-            self.bubble_job = None
-        if self.bubble and self.bubble.winfo_exists():
-            self.bubble.destroy()
-        self.bubble = None
+        self.notifications.dismiss()
 
     def activity(self, data):
         kind = data['kind']
@@ -386,15 +413,17 @@ class CompanionApp:
         self.response_job = None
         self.set_state('RESPONDING')
 
-    def _end_fade(self):
-        self.fade_job = None
-        self.root.attributes('-alpha', 1)
-
     def close(self):
         if self.closing:
             return
         self._save()
         self.closing = True
+        self.transitions.finish()
+        self.sleep_bubbles.clear()
+        self.notifications.clear()
+        if self.life_job:
+            self.root.after_cancel(self.life_job)
+            self.life_job = None
         if self.motion_job:
             self.root.after_cancel(self.motion_job)
             self.motion_job = None
@@ -406,7 +435,8 @@ class CompanionApp:
 
     def _destroyed(self, event):
         if event.widget is self.root:
-            for job in (self.poll_job, self.idle_job, self.bubble_job, self.response_job, self.fade_job, self.motion_job):
+            for job in (self.poll_job, self.idle_job, self.response_job, self.motion_job, self.life_job,
+                        self.transitions.job, self.notifications.job):
                 if job:
                     self.root.after_cancel(job)
             self.worker.close()

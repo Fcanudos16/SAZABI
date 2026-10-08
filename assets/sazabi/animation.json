@@ -1,0 +1,10 @@
+{
+  "sleep_after_seconds": 120,
+  "transition_ms": 350,
+  "important_transition_ms": 500,
+  "sleep_transition_ms": 1200,
+  "wake_transition_ms": 700,
+  "notification_transition_ms": 250,
+  "hover_wakes": false,
+  "blink_enabled": true
+}

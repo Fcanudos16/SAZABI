@@ -2,8 +2,10 @@
 import ctypes as c
 from ctypes import wintypes as w
 import sys
+from functools import lru_cache
 
 
+@lru_cache(maxsize=1)
 def api():
     if sys.platform != 'win32':
         return None
@@ -47,6 +49,13 @@ def show_passive(window, x, y, width, height, topmost=True):
     user, _ = api()
     user.SetWindowPos(hwnd(window), w.HWND(-1 if topmost else -2), x, y, width, height,
                       0x0010 | 0x0040)  # NOACTIVATE | SHOWWINDOW
+
+
+def click_through(window):
+    user, _ = api()
+    handle = hwnd(window)
+    flags = user.GetWindowLongW(handle, -20)
+    user.SetWindowLongW(handle, -20, flags | 0x20 | 0x80000)
 
 
 def position(window, x, y):
