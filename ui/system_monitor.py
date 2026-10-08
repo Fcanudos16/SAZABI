@@ -1,5 +1,6 @@
 """Native, on-demand presentation of the integrated System monitor."""
 import time
+import logging
 import tkinter as tk
 from tkinter import ttk
 from system_monitor.service import MonitorSampler
@@ -104,10 +105,19 @@ class SystemMonitorWindow:
         self.job = None
         if not self.running:
             return
-        value = self.sampler.latest()
-        if value is not None:
-            self.render(value)
-        self.job = self.window.after(200, self.poll)
+        try:
+            value = self.sampler.latest()
+            if value is not None:
+                self.render(value)
+        except Exception as error:
+            # pythonw has no console: report the failure in the window and keep
+            # polling so a transient or unsupported reading cannot freeze it.
+            self.clear_values()
+            self.status.set('Falha ao exibir leitura (' + type(error).__name__ + '). Tentando novamente…')
+            logging.getLogger('sazabi.system_monitor').error('Monitor: falha ao exibir leitura (%s)', type(error).__name__)
+        finally:
+            if self.running:
+                self.job = self.window.after(200, self.poll)
 
     def render(self, value):
         self.clear_values()

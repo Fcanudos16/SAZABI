@@ -8,7 +8,7 @@ def validate_settings(settings):
               'important_transition_ms': (100, 1500), 'sleep_transition_ms': (100, 5000),
               'wake_transition_ms': (100, 3000), 'notification_transition_ms': (100, 1500),
               'jump_transition_ms': (150, 300), 'landing_transition_ms': (400, 800),
-              'work_move_ms': (300, 500), 'work_pause_min_ms': (100, 2000), 'work_pause_max_ms': (100, 3000)}
+              'work_move_ms': (300, 1500), 'work_pause_min_ms': (100, 2000), 'work_pause_max_ms': (100, 3000)}
     for key, (minimum, maximum) in limits.items():
         value = settings[key]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not minimum <= value <= maximum:
@@ -82,13 +82,13 @@ class SazabiIdleController:
     def __init__(self, now, rng):
         self.rng, self.next_blink, self.blink_start = rng, now+rng.uniform(3, 7), None
         self.double_blink = False
-        self.start, self.duration = now, rng.uniform(4.5, 7.5)
-        self.amplitude, self.direction = rng.uniform(1.2, 2.4), rng.choice((-1, 1))
+        self.start, self.duration = now, rng.uniform(8, 12)
+        self.amplitude, self.direction = rng.uniform(.8, 1.2), rng.choice((-1, 1))
 
     def sample(self, now, activity):
         if now-self.start >= self.duration:
-            self.start, self.duration = now, self.rng.uniform(4.5, 7.5)
-            self.amplitude, self.direction = self.rng.uniform(1.2, 2.4), self.rng.choice((-1, 1))
+            self.start, self.duration = now, self.rng.uniform(8, 12)
+            self.amplitude, self.direction = self.rng.uniform(.8, 1.2), self.rng.choice((-1, 1))
         phase = min(1., (now-self.start)/self.duration)
         breath = math.sin(math.pi*phase)**2
         if self.blink_start is None and now >= self.next_blink:
@@ -154,7 +154,7 @@ class SazabiWorkController:
             self.duration = self.pause() if self.stage in ('PAUSE', 'HOLD') else self.settings['work_move_ms']/1000
             elapsed = 0
         amount = ease(elapsed/self.duration)
-        return self.side*3*({'PAUSE': 0, 'OUT': amount, 'HOLD': 1, 'RETURN': 1-amount}[self.stage])
+        return self.side*1*({'PAUSE': 0, 'OUT': amount, 'HOLD': 1, 'RETURN': 1-amount}[self.stage])
 
 
 class SazabiDragController:

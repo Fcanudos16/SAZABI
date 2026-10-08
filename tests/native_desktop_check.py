@@ -68,6 +68,26 @@ def screenshot(root, path):
         user.ReleaseDC(hwnd, source)
 
 
+def freeze_motion(app):
+    """Freeze only this test's compositor for deterministic artwork captures."""
+    if app.motion_job:
+        app.root.after_cancel(app.motion_job)
+        app.motion_job = None
+    app.motion_offset = (0, 0)
+    from ui import native
+    native.position(app.root, app.x, app.y)
+    app.transitions.finish()
+    app.presentation.reset()
+    app.renderer.transform(0, 1.)
+    app.renderer.blink(0)
+    app.sleep_bubbles.clear()
+
+
+def resume_motion(app):
+    if app.motion_job is None:
+        app.motion_tick()
+
+
 def run(mock=False):
     from types import SimpleNamespace
     from ui import native
@@ -76,7 +96,7 @@ def run(mock=False):
     root.withdraw()
     app = DesktopApp(root, Config(mock=mock, database_path=':memory:', search_api_key='',
                                  env_file=str(Path(temporary.name) / '.env')), factory=build_agent)
-    app.reduced_motion.set(True)
+    freeze_motion(app)
     failures = []
     root.report_callback_exception = lambda kind, error, tb: failures.append(error)
     def tick(seconds=.15):
@@ -102,9 +122,9 @@ def run(mock=False):
         assert app.state == 'IDLE' and len(app.atlas.images) == 6
         anchor = (app.x, app.y)
         app.hover(False)
-        app.reduced_motion.set(False)
+        resume_motion(app)
         positions = set()
-        for _ in range(15):
+        for _ in range(45):
             tick(.1)
             positions.add(app.motion_offset)
         assert len(positions) > 1, 'Idle animation must move the native window'
@@ -113,11 +133,11 @@ def run(mock=False):
         held = app.motion_offset
         tick(.3)
         assert app.motion_offset == held, 'Hover must hold the mascot still for clicking'
-        app.reduced_motion.set(True)
+        freeze_motion(app)
         assert app.motion_job is None and app.motion_offset == (0, 0)
         app.hover(False)
         # Exercise the actual compositor, sleep effects and wake-up on Windows.
-        app.reduced_motion.set(False)
+        resume_motion(app)
         foreground = native.api()[0].GetForegroundWindow()
         app.set_state('ANALYZING')
         tick(.12)
@@ -151,7 +171,7 @@ def run(mock=False):
         assert app.animation.sleep.phase == 'SLEEPING'
         assert app.renderer.level == 0, 'Sleep must preserve original eyes'
         tick(.4)
-        assert app.renderer.angle >= 2 and app.renderer.scale <= 1
+        assert app.renderer.angle >= 1 and app.renderer.scale <= 1
         assert all(app.renderer.lids[state] for state in app.atlas.images)
         app.sleep_bubbles.next_at = time.monotonic()
         tick(.4)
@@ -186,7 +206,7 @@ def run(mock=False):
         app.dismiss_bubble()
         tick(.3)
         assert app.bubble is None
-        app.reduced_motion.set(True)
+        freeze_motion(app)
         # Windows owns the exact shape: exterior pixels are not clickable, eyes are.
         user, gdi = native.api()
         gdi.CreateRectRgn.argtypes, gdi.CreateRectRgn.restype = [ctypes.c_int]*4, wintypes.HANDLE
@@ -247,7 +267,7 @@ def run(mock=False):
         tick(.3)
         assert not app.terminal.visible, 'Click/focus outside should dismiss the terminal'
         other.destroy()
-        app.reduced_motion.set(False)
+        resume_motion(app)
         app.set_busy(True)
         app.set_state('WORKING')
         app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
@@ -307,7 +327,7 @@ def run(mock=False):
             enqueue.assert_called_once_with('/help')
         app.set_busy(False)
         app.set_state('IDLE')
-        app.reduced_motion.set(True)
+        freeze_motion(app)
         assert (app.renderer.angle, app.renderer.scale) == (0, 1.)
         cached = app.atlas.frame('IDLE', 3, .99)
         count = len(app.atlas.frames)
@@ -371,10 +391,11 @@ def run(mock=False):
         assert not bool(monitor.window.attributes('-topmost'))
         choose('Sempre no topo')
         assert bool(root.attributes('-topmost'))
-        choose('Reduzir movimento')
-        assert not app.reduced_motion.get()
-        choose('Reduzir movimento')
-        assert app.reduced_motion.get() and app.motion_job is None
+        assert not hasattr(app, 'reduced_motion')
+        assert all(app.menu.entrycget(i, 'label') != 'Reduzir movimento'
+                   for i in range(app.menu.index('end')+1) if app.menu.type(i) != 'separator')
+        resume_motion(app)
+        assert app.motion_job is not None
         for label, seconds in [('Nunca', 0), ('1 minuto', 60), ('2 minutos', 120), ('5 minutos', 300)]:
             choose('Dormir após', child=label)
             assert app.sleep_after.get() == app.animation.sleep.timeout == seconds

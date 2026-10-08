@@ -87,7 +87,7 @@ class SazabiNotificationController:
         self.x, self.y = native.place_near(self.app.x, self.app.y, self.app.atlas.width,
                                          self.app.atlas.height, self.w, self.h, self.app.area)
         window.geometry(f'{self.w}x{self.h}{self.x:+d}{self.y:+d}')
-        window.attributes('-alpha', 1 if self.app.reduced_motion.get() else 0)
+        window.attributes('-alpha', 0)
         window.update_idletasks()
         native.no_activate(window)
         window.deiconify()
@@ -98,7 +98,7 @@ class SazabiNotificationController:
     def dismiss(self):
         if not self.window:
             return
-        if self.app.reduced_motion.get() or self.app.closing:
+        if self.app.closing:
             self.clear()
             return
         if self.leaving:
@@ -123,8 +123,6 @@ class SazabiNotificationController:
             return
         progress = ease(elapsed/duration)
         alpha = self.initial_alpha*(1-progress) if self.leaving else progress
-        if self.app.reduced_motion.get():
-            alpha = 1
         self.window.attributes('-alpha', alpha)
         native.position(self.window, self.x, min(self.app.area[3]-self.h, self.y+round(5*(1-alpha))))
         delay = 33 if elapsed < duration or self.leaving else max(1, round((5.5-elapsed)*1000))

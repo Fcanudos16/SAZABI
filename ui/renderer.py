@@ -123,9 +123,6 @@ class SazabiTransitionController:
         if state == self.renderer.state:
             return
         self.finish()
-        if self.app.reduced_motion.get():
-            self.renderer.pose(state)
-            return
         image, region = self.renderer.current_frame()
         window = self.ghost = tk.Toplevel(self.app.root)
         window.withdraw()

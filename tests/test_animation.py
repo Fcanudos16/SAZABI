@@ -83,7 +83,7 @@ def test_jump_landing_and_work_scan_are_bounded():
     assert drag.sample(2)[0] is None
     work = SazabiWorkController(0, settings(), random.Random(2))
     positions = [work.sample(i/100) for i in range(1500)]
-    assert min(positions) == -3 and max(positions) == 3
+    assert min(positions) == -1 and max(positions) == 1
     assert positions.count(0) > 100
 
 

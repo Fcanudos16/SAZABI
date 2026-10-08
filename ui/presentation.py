@@ -37,7 +37,7 @@ class SazabiPresentationController:
         self.drag_impulse = 0.
 
     def drag(self, delta_x):
-        self.drag_impulse = max(-3., min(3., delta_x/8))
+        self.drag_impulse = max(-1., min(1., delta_x/16))
 
     def reset(self):
         self.angle, self.scale, self.last, self.drag_impulse = 0., 1., None, 0.
@@ -47,26 +47,26 @@ class SazabiPresentationController:
         self.last = now
         self.drag_impulse *= math.exp(-dt*2)
         # Two nonmatching frequencies prevent a single obvious idle loop.
-        angle = .9*math.sin(now*.63) + .45*math.sin(now*.37)
-        scale = .99 + .01*math.cos(now*.85)**2
+        angle = .9*math.sin(now*.25) + .45*math.sin(now*.16)
+        scale = .99 + .01*math.cos(now*.35)**2
         if state in ('WORKING', 'RESEARCHING', 'ANALYZING'):
             angle = work_x
         elif state in ('JUMPING', 'DRAGGING'):
-            angle, scale = self.drag_impulse+math.sin(now*2.6)*1.1, 1.
+            angle, scale = self.drag_impulse+math.sin(now*1.2)*.4, 1.
         elif state == 'LANDING':
             angle, scale = 0., landing_scale
         elif state in ('SLEEPING', 'FALLING_ASLEEP', 'WAKE_UP'):
-            angle = 3*depth
+            angle = 1*depth
             scale = 1-depth*(.01+.01*math.sin(now*.4)**2)
         elif state == 'CONFIGURATION':
-            angle, scale = .7*math.sin(now*.7), 1.
+            angle, scale = .7*math.sin(now*.3), 1.
         elif state == 'EXIT_HOVER':
-            angle = 1.5*math.sin(state_elapsed*5)*max(0, 1-state_elapsed/1.2)
-            scale = .99+.01*min(1, state_elapsed/.4)
+            angle = 1.*math.sin(state_elapsed*2.5)*max(0, 1-state_elapsed/2.4)
+            scale = .99+.01*min(1, state_elapsed/.8)
         elif state in ('FOUND', 'RESPONDING'):
-            angle = -2*math.sin(min(1, state_elapsed/.8)*math.pi)
+            angle = -1*math.sin(min(1, state_elapsed/1.6)*math.pi)
             scale = 1.
-        blend = 1-math.exp(-dt*9)
+        blend = 1-math.exp(-dt*4)
         self.angle += (max(-3, min(3, angle))-self.angle)*blend
         self.scale += (max(.98, min(1, scale))-self.scale)*blend
         return round(self.angle), max(.98, min(1., round(self.scale, 2)))

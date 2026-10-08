@@ -29,17 +29,17 @@ O mapeamento é configurável em `assets/sazabi/states.json`. O agente emite eve
 
 As expressões usam crossfade com easing entre a janela principal e uma única camada anterior, sem ciclar a prancha como frames. A transição normal dura 350 ms; pulo usa 200 ms e pouso 600 ms. Estados que usam a mesma pose não geram crossfade redundante. Um evento novo substitui a transição em andamento e descarta a camada anterior.
 
-O repouso combina respiração sugerida por deslocamento de até três pixels, oscilação lateral e variação controlada de duração, amplitude e direção. Durante trabalho, o conjunto se desloca suavemente para a esquerda, centro, direita e centro, com pausas aleatórias de 300–900 ms e movimentos de 400 ms. O arquivo da cabeça não é recortado ou reconstruído. Resultados recebem uma pequena reação vertical.
+O repouso combina respiração sugerida por deslocamento de aproximadamente um pixel, oscilação lateral e variação controlada de duração, amplitude e direção. Durante trabalho, o conjunto se desloca suavemente para a esquerda, centro, direita e centro, com pausas aleatórias de 1–2 segundos e movimentos de 900 ms. O arquivo da cabeça não é recortado ou reconstruído. Resultados recebem uma pequena reação vertical.
 
-Arrastar mais de seis pixels inicia JUMPING → DRAGGING: o cursor controla diretamente a posição base e uma elevação visual de aproximadamente cinco pixels continua animada. Ao soltar, LANDING aplica descida, impacto e escala uniforme mínima de 98% durante 600 ms. Em seguida retorna ao estado real da tarefa, ou IDLE. A animação nunca altera a posição salva. Reduzir movimento mantém a interação e troca de poses, sem deslocamentos, escala ou fade.
+Arrastar mais de seis pixels inicia JUMPING → DRAGGING: o cursor controla diretamente a posição base e uma elevação visual de aproximadamente cinco pixels continua animada. Ao soltar, LANDING aplica descida, impacto e escala uniforme mínima de 98% durante 600 ms. Em seguida retorna ao estado real da tarefa, ou IDLE. A animação nunca altera a posição salva. Os movimentos são permanentemente lentos e discretos; não existe alternância de redução de movimento.
 
 As piscadas duram aproximadamente 220 ms, com intervalos de 3–7 segundos e ocasionais piscadas duplas. Usam máscaras temporárias de composição somente nas poses de repouso, trabalho e resultado; nenhuma alteração é gravada no JPEG. Não há pálpebras desenhadas sobre a pose de sono, configurações, pouso ou alerta de encerramento.
 
-As poses possuem também animação de apresentação: IDLE inclina suavemente e respira com escala uniforme; trabalho acompanha o movimento lateral com inclinação; arraste inclina conforme o deslocamento e balança; pouso amortece; a pose do menu oscila discretamente; EXIT_HOVER executa uma reação curta de tensão; FOUND/RESPONDING fazem um pequeno aceno. Sono inclina o conjunto em até três graus com respiração lenta, e o despertar retorna gradualmente. As pálpebras de piscada usam a mesma transformação da imagem para manter alinhamento.
+As poses possuem também animação de apresentação: IDLE inclina suavemente e respira com escala uniforme; trabalho acompanha o movimento lateral com inclinação; arraste inclina conforme o deslocamento e balança; pouso amortece; a pose do menu oscila discretamente; EXIT_HOVER executa uma reação curta de tensão; FOUND/RESPONDING fazem um pequeno aceno. Sono inclina o conjunto em até um grau com respiração lenta, e o despertar retorna gradualmente. As pálpebras de piscada usam a mesma transformação da imagem para manter alinhamento.
 
 **Limite da arte plana:** cabeça, pescoço, corpo e manto não são camadas independentes. A rotação e a respiração são do personagem inteiro, sem recortar a cabeça, deformar o torso ou redesenhar detalhes. Animação isolada dessas partes exige assets separados do autor.
 
-O cache possui no máximo 120 apresentações transformadas (seis poses, sete ângulos e três escalas, descontando as originais). Cada combinação é calculada uma vez quando necessária e depois reutilizada; não há criação contínua de bitmaps nem crescimento ilimitado. Máscara de clique e pálpebras acompanham a transformação. Reduzir movimento restaura imediatamente ângulo zero e escala original.
+O cache possui no máximo 120 apresentações transformadas (seis poses, sete ângulos e três escalas, descontando as originais). Cada combinação é calculada uma vez quando necessária e depois reutilizada; não há criação contínua de bitmaps nem crescimento ilimitado. Máscara de clique e pálpebras acompanham a transformação. A respiração tem ciclos de 8–12 segundos e o deslocamento de trabalho é de apenas um pixel, com movimentos de 900 ms e pausas de 1–2 segundos.
 
 ## Sono e autonomia
 
@@ -51,13 +51,13 @@ Prioridade visual: erro → sono/despertar → arraste → pouso → hover de en
 
 O menu **Dormir após** oferece Nunca, 1, 2 e 5 minutos; a preferência é salva em `companion.json`. `assets/sazabi/animation.json` controla os tempos, piscadas e reação opcional ao hover. Zero desativa o sono. Por padrão, apenas passar o cursor não acorda o mascote.
 
-Reduzir movimento desativa piscadas, transições, translação e bolhas. O timer leve de comportamento continua, sem efeitos visuais. A apresentação usa um timer de 50 ms, atualiza pálpebras apenas quando o nível muda e suspende os efeitos quando a janela não está visível. Não há geração contínua de imagens nem IA em runtime.
+Piscadas, transições e bolhas continuam ativas no perfil suave. O temporizador de sono permanece em tempo real. A apresentação usa um timer de 50 ms, atualiza pálpebras apenas quando o nível muda e suspende os efeitos quando a janela não está visível. Não há geração contínua de imagens nem IA em runtime.
 
 ## Interação
 
 - Clique esquerdo acordado: alterna o terminal próximo ao personagem; dormindo, apenas acorda.
 - Movimento superior a seis pixels durante o clique: arrasta; não abre o terminal.
-- Clique direito: terminal, nova pesquisa, configuração, sempre no topo, reduzir movimento e encerrar.
+- Clique direito: terminal, nova pesquisa, configuração, monitor do sistema, sempre no topo e encerrar.
 - O popup é uma janela Tkinter nativa não modal, para não bloquear timers no loop de menu do Windows. Mantém todas as opções existentes, submenu de sono, teclado, Escape e fechamento ao perder foco. CONFIGURATION permanece enquanto estiver aberto; hover/seleção de Encerrar ativa EXIT_HOVER sem encerrar. Sair dessa opção restaura CONFIGURATION. Abrir/fechar terminal considera a visibilidade anterior à abertura do menu.
 - A posição é mantida em memória e salva localmente. Os limites são calculados pela área útil do monitor.
 - Mascote e balões usam NOACTIVATE; não disputam foco com outros aplicativos.

@@ -42,7 +42,6 @@ class CompanionApp:
         self.state, self.notice, self.operation_failed = 'IDLE', None, False
         self.state_history = ['IDLE']
         self.always_on_top = tk.BooleanVar(root, True)
-        self.reduced_motion = tk.BooleanVar(root, False)
         self.atlas = SpriteAtlas(root)
         self.animation_settings = validate_settings(json.loads((ASSETS / 'animation.json').read_text(encoding='utf-8')))
         self.animation = SazabiAnimationController(time.monotonic(), self.animation_settings)
@@ -91,7 +90,6 @@ class CompanionApp:
         self.canvas.bind('<Button-3>', self.context_menu)
         self.canvas.bind('<Enter>', lambda event: self.hover(True))
         self.canvas.bind('<Leave>', lambda event: self.hover(False))
-        self.reduced_motion.trace_add('write', self.motion_changed)
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.bind('<Destroy>', self._destroyed, add='+')
         self.worker = AgentWorker(config, factory=factory, progress=True)
@@ -159,26 +157,9 @@ class CompanionApp:
         self.refresh_visual()
         self.life_job = self.root.after(250, self.life_tick)
 
-    def motion_changed(self, *args):
-        if self.motion_job:
-            self.root.after_cancel(self.motion_job)
-            self.motion_job = None
-        self.motion_started = time.monotonic()
-        if self.reduced_motion.get():
-            self.motion_offset = (0, 0)
-            native.position(self.root, self.x, self.y)
-            self.root.attributes('-alpha', 1)
-            self.transitions.finish()
-            self.presentation.reset()
-            self.renderer.transform(0, 1.)
-            self.renderer.blink(0)
-            self.sleep_bubbles.clear()
-        else:
-            self.motion_tick()
-
     def motion_tick(self):
         self.motion_job = None
-        if self.closing or self.reduced_motion.get():
+        if self.closing:
             return
         if not self.root.winfo_viewable():
             self.sleep_bubbles.clear()
@@ -200,7 +181,7 @@ class CompanionApp:
                 dx, dy = 0, drag_y
             elif self.state in ('FOUND', 'RESPONDING'):
                 rx, ry = offset(self.state, now-self.motion_started)
-                dx, dy = dx+rx, dy+ry
+                dx, dy = dx+round(rx*.35), dy+round(ry*.35)
             left, top, right, bottom = self.area
             if not self._drag:
                 dx = max(left, min(self.x+dx, right-self.atlas.width))-self.x
@@ -218,7 +199,6 @@ class CompanionApp:
                 if not (-100000 < self.x < 100000 and -100000 < self.y < 100000):
                     self.x = self.y = 0
                 self.always_on_top.set(bool(data.get('topmost', True)))
-                self.reduced_motion.set(bool(data.get('reduced_motion', False)))
                 timeout = data.get('sleep_after_seconds', self.animation.sleep.timeout)
                 if isinstance(timeout, int) and 0 <= timeout <= 86400:
                     self.sleep_after.set(timeout)
@@ -232,7 +212,6 @@ class CompanionApp:
                 self.position_file.parent.mkdir(parents=True, exist_ok=True)
                 temporary = self.position_file.with_suffix('.tmp')
                 temporary.write_text(json.dumps({'x': self.x, 'y': self.y, 'topmost': self.always_on_top.get(),
-                                                'reduced_motion': self.reduced_motion.get(),
                                                 'sleep_after_seconds': self.sleep_after.get()}), encoding='utf-8')
                 temporary.replace(self.position_file)
             except OSError:
@@ -265,7 +244,7 @@ class CompanionApp:
                 self._drag = (mx, my, x, y, True)
                 self.presentation.drag(x+dx-self.x)
                 self.x, self.y = x+dx, y+dy
-                jump_y = self.drag_controller.sample(time.monotonic())[1] if not self.reduced_motion.get() else 0
+                jump_y = self.drag_controller.sample(time.monotonic())[1]
                 self.motion_offset = (0, jump_y)
                 native.show_passive(self.root, self.x, self.y+jump_y, self.atlas.width, self.atlas.height, self.always_on_top.get())
 
@@ -279,7 +258,7 @@ class CompanionApp:
             self.refresh_visual()
             self.area = native.work_area(self.root)
             self._clamp(self.area)
-            dy = 0 if self.reduced_motion.get() else self.drag_controller.sample(time.monotonic())[1]
+            dy = self.drag_controller.sample(time.monotonic())[1]
             self.motion_offset = (0, dy)
             native.show_passive(self.root, self.x, self.y+dy, self.atlas.width, self.atlas.height, self.always_on_top.get())
             self._save()
@@ -363,7 +342,6 @@ class CompanionApp:
         menu.add_command(label='Monitor do sistema', command=lambda: self.menu_action(self.open_system_monitor))
         menu.add_separator()
         menu.add_checkbutton(label='Sempre no topo', variable=self.always_on_top, command=self.topmost_changed)
-        menu.add_checkbutton(label='Reduzir movimento', variable=self.reduced_motion, command=self._save)
         sleep_menu = tk.Menu(menu, tearoff=False, bg=BG, fg=FG, font=FONT)
         for label, seconds in [('Nunca', 0), ('1 minuto', 60), ('2 minutos', 120), ('5 minutos', 300)]:
             sleep_menu.add_radiobutton(label=label, value=seconds, variable=self.sleep_after,

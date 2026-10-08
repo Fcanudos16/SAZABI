@@ -27,7 +27,7 @@ No Windows, abra `iniciar_sazabi.cmd` para iniciar com `pythonw`, sem manter um 
 - **Arraste** o personagem para movê-lo. Um arraste não abre o terminal.
 - **Clique** para abrir ou fechar o terminal preto e verde, próximo ao personagem (até 620 × 440 px).
 - **Escape, × ou clique fora** fecham apenas o terminal. A pesquisa continua em segundo plano.
-- **Clique direito** dá acesso a nova pesquisa, configuração, Monitor do sistema, Sempre no topo, Reduzir movimento e Encerrar SAZABI.
+- **Clique direito** dá acesso a nova pesquisa, configuração, Monitor do sistema, Sempre no topo e Encerrar SAZABI.
 - Ao terminar, a pose muda e um pequeno aviso aparece por 5,5 segundos. Os resultados não são abertos automaticamente e o foco de outro aplicativo é preservado.
 - A posição e as preferências do mascote ficam em `data/companion.json`, junto à pasta do banco configurado.
 
@@ -132,3 +132,5 @@ Sites podem bloquear coleta, exigir JavaScript ou não publicar identidade sufic
 - `tests/`: testes e dados sintéticos isolados.
 
 Credenciais, banco, logs e backups ficam fora do Git. Para distribuir o projeto, use o repositório; não copie sua pasta `.env` ou `data/` para uma instalação nova.
+
+O mascote usa animações lentas e discretas permanentemente; não há opção de reduzir movimento. Preferências antigas dessa opção são ignoradas. O monitor usa apenas métricas locais, sem chave de API. Se uma leitura falhar na apresentação, a janela informa o erro e tenta novamente automaticamente.

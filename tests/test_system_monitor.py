@@ -98,3 +98,20 @@ def test_missing_dependency_is_an_explicit_error_not_fake_metrics():
     finally:
         sampler.close()
         sampler.thread.join(2)
+
+
+def test_monitor_poll_recovers_after_display_exception():
+    from ui.system_monitor import SystemMonitorWindow
+    monitor = Mock()
+    monitor.running = True
+    monitor.sampler.latest.return_value = {'cpu': 'unsupported reading'}
+    monitor.render.side_effect = ValueError('bad reading')
+    SystemMonitorWindow.poll(monitor)
+    monitor.clear_values.assert_called_once()
+    assert 'ValueError' in monitor.status.set.call_args.args[0]
+    monitor.window.after.assert_called_once_with(200, monitor.poll)
+    monitor.render.side_effect = None
+    monitor.window.after.reset_mock()
+    SystemMonitorWindow.poll(monitor)
+    assert monitor.render.call_count == 2
+    monitor.window.after.assert_called_once_with(200, monitor.poll)
