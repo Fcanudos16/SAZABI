@@ -29,7 +29,9 @@ def test_task_priority_does_not_lock_out_results():
     states = SazabiStateManager()
     assert states.resolve('IDLE', False, True, 'SLEEPING') == 'ERROR'
     for task in ('WORKING', 'RESEARCHING', 'ANALYZING', 'FOUND', 'RESPONDING'):
-        assert states.resolve(task, True, False, 'SLEEPING') == task
+        assert states.resolve(task, True, False, 'IDLE') == task
+        assert states.resolve(task, True, False, 'WAKE_UP') == 'WAKE_UP'
+        assert states.resolve(task, True, False, 'IDLE', 'DRAGGING') == 'DRAGGING'
     assert states.resolve('IDLE', False, False, 'SLEEPING') == 'SLEEPING'
 
 
@@ -47,7 +49,7 @@ def test_twelve_hour_behavior_is_bounded_and_never_sleeps_during_work():
     for now in range(12*3600):
         busy = now % 300 < 150
         x, y, blink, phase = controller.sample(now, 'WORKING' if busy else 'IDLE', busy)
-        assert abs(x) <= 1 and -3 <= y <= 2 and 0 <= blink <= 1
+        assert abs(x) <= 4 and -3 <= y <= 2 and 0 <= blink <= 1
         if busy:
             assert phase not in ('SLEEPING', 'FALLING_ASLEEP')
     assert not hasattr(controller, 'history'), 'Behavior must not accumulate frames'
@@ -64,7 +66,31 @@ def test_blinks_vary_and_are_short():
         active = blink > .01
     intervals = [round(b-a, 1) for a, b in zip(starts, starts[1:])]
     assert len(starts) > 8 and len(set(intervals)) > 3
-    assert all(2 < value < 7 for value in intervals)
+    assert all(.3 < value < 7.3 for value in intervals)
+    assert any(value < .6 for value in intervals), 'Occasional double blink expected'
+
+
+def test_jump_landing_and_work_scan_are_bounded():
+    from ui.behavior import SazabiDragController, SazabiWorkController
+    drag = SazabiDragController(settings())
+    drag.start(0)
+    assert drag.sample(.1)[0] == 'JUMPING'
+    assert drag.sample(.4)[0] == 'DRAGGING'
+    drag.release(1)
+    samples = [drag.sample(1+i/100) for i in range(61)]
+    assert all(-6 <= y <= 2 and .98 <= scale <= 1 for _, y, scale in samples)
+    assert any(scale < .99 for _, _, scale in samples)
+    assert drag.sample(2)[0] is None
+    work = SazabiWorkController(0, settings(), random.Random(2))
+    positions = [work.sample(i/100) for i in range(1500)]
+    assert min(positions) == -3 and max(positions) == 3
+    assert positions.count(0) > 100
+
+
+def test_sleep_has_no_painted_closed_eyes():
+    controller = SazabiAnimationController(0, settings(), random.Random(9))
+    controller.sample(121, 'IDLE')
+    assert controller.sample(123, 'IDLE')[2:] == (0., 'SLEEPING')
 
 
 def test_sleep_can_be_disabled_and_invalid_durations_rejected():

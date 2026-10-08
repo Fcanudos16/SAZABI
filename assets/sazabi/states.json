@@ -4,11 +4,18 @@
   "canvas": [190, 220],
   "background_threshold": 96,
   "states": {
-    "IDLE": [20, 65, 195, 285],
-    "ANALYZING": [215, 65, 355, 285],
-    "RESEARCHING": [365, 65, 545, 285],
-    "WORKING": [25, 295, 200, 500],
-    "FOUND": [220, 295, 365, 500],
-    "RESPONDING": [385, 295, 545, 500]
+    "IDLE": [215, 65, 355, 285],
+    "WORKING": [20, 65, 195, 285],
+    "FOUND": [365, 65, 545, 285],
+    "LANDING": [25, 295, 200, 500],
+    "CONFIGURATION": [220, 295, 365, 500],
+    "EXIT_HOVER": [385, 295, 545, 500]
+  },
+  "state_models": {
+    "IDLE": "IDLE", "ANALYZING": "WORKING", "WORKING": "WORKING",
+    "RESEARCHING": "WORKING", "FOUND": "FOUND", "RESPONDING": "FOUND",
+    "JUMPING": "WORKING", "DRAGGING": "WORKING", "LANDING": "LANDING",
+    "CONFIGURATION": "CONFIGURATION", "EXIT_HOVER": "EXIT_HOVER",
+    "FALLING_ASLEEP": "IDLE", "SLEEPING": "IDLE", "WAKE_UP": "IDLE", "ERROR": "IDLE"
   }
 }

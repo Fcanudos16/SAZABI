@@ -5,6 +5,11 @@
   "sleep_transition_ms": 1200,
   "wake_transition_ms": 700,
   "notification_transition_ms": 250,
+  "jump_transition_ms": 200,
+  "landing_transition_ms": 600,
+  "work_move_ms": 400,
+  "work_pause_min_ms": 300,
+  "work_pause_max_ms": 900,
   "hover_wakes": false,
   "blink_enabled": true
 }

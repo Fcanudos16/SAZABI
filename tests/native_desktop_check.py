@@ -12,7 +12,6 @@ import time
 import zlib
 import tempfile
 import os
-import threading
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -141,11 +140,13 @@ def run(mock=False):
         tick(.1)
         assert app.renderer.level > 0 and app.state == 'IDLE', 'Drag must keep presentation animation alive'
         app.release(None)
-        tick(.2)
+        assert app.visual_state == 'LANDING'
+        tick(.7)
+        assert app.visual_state == 'IDLE'
         app.animation.sleep.last_activity = time.monotonic()-121
         tick(1.6)
         assert app.animation.sleep.phase == 'SLEEPING'
-        assert app.renderer.level == 8
+        assert app.renderer.level == 0, 'Sleep must preserve original eyes'
         assert all(app.renderer.lids[state] for state in app.atlas.images)
         app.sleep_bubbles.next_at = time.monotonic()
         tick(.4)
@@ -153,7 +154,11 @@ def run(mock=False):
         assert native.api()[0].GetForegroundWindow() == foreground
         capture(root, 'mascot-sleeping.png')
         capture(app.sleep_bubbles.items[0]['window'], 'sleep-effect.png')
-        app.touch()
+        sleep_position = (app.x, app.y)
+        app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
+        app.drag(SimpleNamespace(x_root=app.x+50, y_root=app.y+90))
+        app.release(None)
+        assert (app.x, app.y) == sleep_position and app.terminal is None
         assert app.animation.sleep.phase == 'WAKE_UP'
         assert not app.sleep_bubbles.items
         tick(.8)
@@ -190,10 +195,10 @@ def run(mock=False):
         assert gdi.PtInRegion(region, eye % app.atlas.width, eye // app.atlas.width)
         gdi.DeleteObject(region)
         for state in app.atlas.images:
-            app.set_state(state)
+            app.renderer.pose(state)
             tick(.05)
             capture(root, 'mascot-' + state.lower() + '.png')
-        app.set_state('IDLE')
+        app.renderer.pose('IDLE')
         before = (app.x, app.y)
         app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
         app.drag(SimpleNamespace(x_root=app.x+45, y_root=app.y+95))
@@ -217,7 +222,7 @@ def run(mock=False):
         text = app.terminal.output.get('1.0', 'end')
         assert ('Pesquisa concluída' if mock else 'Pesquisa não iniciada') in text
         if mock:
-            assert set(app.atlas.images) <= set(app.state_history)
+            assert {'IDLE', 'ANALYZING', 'RESEARCHING', 'WORKING', 'FOUND', 'RESPONDING'} <= set(app.state_history)
             assert app.notice and 'empresas' in app.notice
         else:
             assert app.operation_failed
@@ -237,40 +242,78 @@ def run(mock=False):
         tick(.3)
         assert not app.terminal.visible, 'Click/focus outside should dismiss the terminal'
         other.destroy()
+        app.reduced_motion.set(False)
+        app.set_busy(True)
+        app.set_state('WORKING')
+        app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
+        app.drag(SimpleNamespace(x_root=app.x+60, y_root=app.y+100))
+        tick(.3)
+        assert app.state == 'WORKING' and app.visual_state == 'DRAGGING'
+        app.release(None)
+        tick(.25)
+        assert app.visual_state == 'LANDING' and app.renderer.state == 'LANDING'
+        capture(root, 'mascot-landing-impact.png')
+        tick(.6)
+        assert app.visual_state == 'WORKING'
+        app.set_busy(False)
+        app.set_state('IDLE')
+        app.context_menu(SimpleNamespace(x_root=app.x+50, y_root=app.y+80))
+        tick(.4)
+        assert app.visual_state == 'CONFIGURATION'
+        popup = app.interaction.windows[0]
+        assert popup.winfo_rootx()+popup.winfo_width() <= app.x or popup.winfo_rootx() >= app.x+app.atlas.width
+        exit_button = app.interaction.rows['Encerrar SAZABI'][3]
+        exit_button.event_generate('<Enter>')
+        tick(.4)
+        assert app.visual_state == 'EXIT_HOVER' and app.renderer.state == 'EXIT_HOVER'
+        assert not app.closing and app.worker.thread.is_alive()
+        capture(root, 'mascot-exit-hover.png')
+        capture(app.interaction.windows[0], 'mascot-context-menu.png')
+        exit_button.event_generate('<Leave>')
+        tick(.4)
+        assert app.visual_state == 'CONFIGURATION'
+        app.interaction.windows[0].event_generate('<Escape>')
+        tick(.4)
+        assert not app.interaction.menu_open and app.visual_state == 'IDLE'
+        # Real keyboard events are directed only at this test's Tk popup.
+        app.context_menu(SimpleNamespace(x_root=app.x, y_root=app.y))
+        tick(.1)
+        popup = app.interaction.windows[0]
+        popup.event_generate('<Home>')
+        popup.event_generate('<Down>')
+        popup.event_generate('<Return>')
+        tick(.3)
+        assert app.terminal.visible and app.terminal.entry.get() == 'procure empresas em '
+        app.terminal.hide()
+        app.context_menu(SimpleNamespace(x_root=app.x, y_root=app.y))
+        tick(.1)
+        app.press(SimpleNamespace(x_root=app.x+80, y_root=app.y+120))
+        assert not app.interaction.menu_open
+        app.release(None)
+        app.terminal.hide()
+        app.animation.sleep.phase = 'SLEEPING'
+        app.animation.sleep.started = time.monotonic()
+        with patch.object(app.worker.commands, 'put') as enqueue:
+            app.submit('/help')
+            assert app.visual_state == 'WAKE_UP' and not enqueue.called
+            tick(.35)
+            assert not enqueue.called
+            tick(.5)
+            enqueue.assert_called_once_with('/help')
+        app.set_busy(False)
+        app.set_state('IDLE')
+        app.reduced_motion.set(True)
         def choose(label, child=None):
-            # Windows modal menus do not run Tk after callbacks. Post keys only
-            # to our own HWND from a helper thread, never to the desktop globally.
-            if app.menu is None:
-                with patch.object(tk.Menu, 'tk_popup'):
-                    app.context_menu(SimpleNamespace(x_root=app.x+50, y_root=app.y+80))
-            assert app.menu.winfo_exists(), 'Popup callbacks were destroyed before selection'
-            labels = [app.menu.entrycget(i, 'label') for i in range(app.menu.index('end')+1)
-                      if app.menu.type(i) != 'separator']
-            keys = [0x28]*(labels.index(label)+1)+[0x0D]
-            if child is not None:
-                submenu = root.nametowidget(app.menu.entrycget(label, 'menu'))
-                children = [submenu.entrycget(i, 'label') for i in range(submenu.index('end')+1)]
-                keys = keys[:-1]+[0x27, 0x24]+[0x28]*children.index(child)+[0x0D]
-            user = native.api()[0]
-            user.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, ctypes.c_size_t, ctypes.c_ssize_t]
-            handle, done = native.hwnd(root), threading.Event()
-            def select():
-                if done.wait(.2):
-                    return
-                for key in keys:
-                    user.PostMessageW(handle, 0x100, key, 0)
-                    user.PostMessageW(handle, 0x101, key, 0)
-                    if done.wait(.04):
-                        return
-                if not done.wait(2):
-                    user.PostMessageW(handle, 0x1F, 0, 0)  # cancel only our popup on failure
-            helper = threading.Thread(target=select, daemon=True)
-            helper.start()
-            try:
-                app.context_menu(SimpleNamespace(x_root=app.x+50, y_root=app.y+80))
-            finally:
-                done.set()
-                helper.join(timeout=1)
+            app.context_menu(SimpleNamespace(x_root=app.x+50, y_root=app.y+80))
+            tick(.12)
+            assert app.interaction.menu_open and app.visual_state == 'CONFIGURATION'
+            button = app.interaction.rows[label][3]
+            button.event_generate('<Enter>')
+            tick(.05)
+            button.invoke()
+            if child:
+                tick(.1)
+                app.interaction.rows[child][3].invoke()
             tick(.5)
         choose('Nova pesquisa')
         assert app.terminal.visible and app.terminal.window.winfo_viewable()
@@ -365,7 +408,7 @@ def run(mock=False):
         assert not monitor.sampler.thread.is_alive()
         app.worker.thread.join(timeout=5)
         assert not app.worker.thread.is_alive()
-        print('PASS: mascot, animations, sleep, native menus, search/settings focus, real system metrics, monitor pause/resume, bounded layout, worker shutdown')
+        print('PASS: official poses, drag/landing/task restore, exit hover, sleep interaction gate, wake queue, animated popup/keyboard, settings, real metrics, shutdown')
     finally:
         app.worker.close()
         app.worker.thread.join(timeout=5)

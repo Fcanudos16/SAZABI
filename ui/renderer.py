@@ -1,4 +1,4 @@
-"""Presentation overlays only. No source pixel is rewritten or resampled."""
+"""Original poses plus temporary presentation layers; source files stay intact."""
 from collections import Counter
 import time
 import tkinter as tk
@@ -52,6 +52,7 @@ def eye_rows(rgb, mask, width, height):
 class SazabiRenderer:
     def __init__(self, app):
         self.app, self.state, self.level = app, 'IDLE', -1
+        self.scale = 1.
         self.lids = {}
         for state, pixels in app.atlas.pixels.items():
             items = []
@@ -65,16 +66,29 @@ class SazabiRenderer:
             for item, _ in items:
                 self.app.canvas.itemconfigure(item, state='hidden')
         self.state, self.level = state, -1
+        self.scale = 1.
         self.app.canvas.itemconfigure(self.app.sprite, image=self.app.atlas.images[state])
         native.shape(self.app.root, self.app.atlas.regions[state])
 
     def blink(self, amount):
+        if self.scale != 1. or self.state in ('CONFIGURATION', 'EXIT_HOVER', 'LANDING'):
+            amount = 0
         level = round(amount*8)
         if level == self.level:
             return
         self.level = level
         for item, fraction in self.lids[self.state]:
             self.app.canvas.itemconfigure(item, state='normal' if fraction <= level/8 else 'hidden')
+
+    def landing_scale(self, amount):
+        scale = max(.98, min(1., round(amount, 2))) if self.state == 'LANDING' else 1.
+        if scale == self.scale:
+            return
+        self.blink(0)
+        self.scale = scale
+        image, region = self.app.atlas.landing_frames[scale] if scale != 1. else (self.app.atlas.images[self.state], self.app.atlas.regions[self.state])
+        self.app.canvas.itemconfigure(self.app.sprite, image=image)
+        native.shape(self.app.root, region)
 
 
 class SazabiTransitionController:
@@ -91,7 +105,9 @@ class SazabiTransitionController:
             self.ghost = None
         self.app.root.attributes('-alpha', 1)
 
-    def start(self, state):
+    def start(self, state, duration=None):
+        if state == self.renderer.state:
+            return
         self.finish()
         if self.app.reduced_motion.get():
             self.renderer.pose(state)
@@ -112,7 +128,7 @@ class SazabiTransitionController:
         self.renderer.pose(state)
         self.started = time.monotonic()
         key = 'important_transition_ms' if state in ('FOUND', 'RESPONDING') else 'transition_ms'
-        self.duration = self.app.animation_settings[key]/1000
+        self.duration = duration or self.app.animation_settings[key]/1000
         self.tick()
 
     def tick(self):

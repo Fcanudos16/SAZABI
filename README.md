@@ -31,7 +31,7 @@ No Windows, abra `iniciar_sazabi.cmd` para iniciar com `pythonw`, sem manter um 
 - Ao terminar, a pose muda e um pequeno aviso aparece por 5,5 segundos. Os resultados não são abertos automaticamente e o foco de outro aplicativo é preservado.
 - A posição e as preferências do mascote ficam em `data/companion.json`, junto à pasta do banco configurado.
 
-As seis poses são vistas da mesma prancha JPEG, sem redimensionamento, recoloração, redesenho ou geração por IA. O arquivo original permanece intacto em `assets/sazabi/original.jpg`, verificado por SHA-256. O mapeamento das poses está em `assets/sazabi/states.json`. A transparência é aplicada à região da janela, preservando o branco dos olhos. Consulte [DESIGN.md](DESIGN.md).
+As seis poses vêm da mesma prancha JPEG, sem recoloração, redesenho ou geração por IA. O arquivo original permanece intacto em `assets/sazabi/original.jpg`, verificado por SHA-256. O mapeamento central está em `assets/sazabi/states.json`. O repouso usa a pose superior central; arrastar inicia pulo e soltar inicia pouso, com escala uniforme mínima de 98%. A pose inferior direita aparece apenas sobre a opção Encerrar. Durante o sono, o primeiro clique apenas acorda; comandos aguardam o despertar. Consulte [DESIGN.md](DESIGN.md).
 
 ### Monitor do sistema
 

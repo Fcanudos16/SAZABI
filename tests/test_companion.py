@@ -8,8 +8,11 @@ from ui.native import place_near
 def test_original_art_and_six_explicit_viewports():
     config = json.loads((ASSETS / 'states.json').read_text())
     assert hashlib.sha256((ASSETS / config['image']).read_bytes()).hexdigest() == config['sha256']
-    assert set(config['states']) == {'IDLE', 'ANALYZING', 'RESEARCHING', 'WORKING', 'FOUND', 'RESPONDING'}
+    assert set(config['states']) == {'IDLE', 'WORKING', 'FOUND', 'LANDING', 'CONFIGURATION', 'EXIT_HOVER'}
     assert len({tuple(rect) for rect in config['states'].values()}) == 6
+    assert config['states']['IDLE'] == [215, 65, 355, 285]
+    assert config['state_models']['RESPONDING'] != 'EXIT_HOVER'
+    assert config['state_models']['DRAGGING'] == config['state_models']['WORKING']
 
 
 def test_background_region_preserves_enclosed_white_eyes_and_rgb():

@@ -12,7 +12,8 @@ from ui.sprites import SpriteAtlas, ASSETS
 from ui.terminal import ResultTerminal, BG, FG, FONT
 from ui import native
 from ui.motion import offset
-from ui.behavior import SazabiAnimationController, validate_settings
+from ui.behavior import SazabiAnimationController, SazabiDragController, validate_settings
+from ui.interaction import SazabiInteractionController
 from ui.renderer import SazabiRenderer, SazabiTransitionController
 from ui.effects import SleepBubbles, SazabiNotificationController
 
@@ -44,6 +45,9 @@ class CompanionApp:
         self.atlas = SpriteAtlas(root)
         self.animation_settings = validate_settings(json.loads((ASSETS / 'animation.json').read_text(encoding='utf-8')))
         self.animation = SazabiAnimationController(time.monotonic(), self.animation_settings)
+        self.drag_controller = SazabiDragController(self.animation_settings)
+        self.wake_job, self.visual_state = None, 'IDLE'
+        self.visual_history = ['IDLE']
         self.sleep_after = tk.IntVar(root, self.animation_settings['sleep_after_seconds'])
         self.life_job = None
         self.x, self.y = 0, 0
@@ -75,6 +79,7 @@ class CompanionApp:
         self._drag = None
         self.renderer = SazabiRenderer(self)
         self.transitions = SazabiTransitionController(self, self.renderer)
+        self.interaction = SazabiInteractionController(self)
         self.sleep_bubbles = SleepBubbles(self, self.animation.rng)
         self.notifications = SazabiNotificationController(self)
         self.canvas.bind('<ButtonPress-1>', self.press)
@@ -99,6 +104,42 @@ class CompanionApp:
     def touch(self):
         self.animation.touch(time.monotonic())
         self.sleep_bubbles.clear()
+        self.refresh_visual()
+
+    def wake_gate(self, action=None):
+        if self.animation.sleep.phase not in ('SLEEPING', 'FALLING_ASLEEP', 'WAKE_UP'):
+            return False
+        self.touch()
+        if action is not None:
+            if self.wake_job:
+                self.root.after_cancel(self.wake_job)
+            remaining = max(0, self.animation.sleep.wake-(time.monotonic()-self.animation.sleep.started))
+            def run():
+                self.wake_job = None
+                self.animation.sleep.update(time.monotonic())
+                if not self.closing:
+                    action()
+            self.wake_job = self.root.after(max(1, int(remaining*1000)+10), run)
+        return True
+
+    def temporary_state(self):
+        phase = self.drag_controller.sample(time.monotonic())[0]
+        if phase:
+            return phase
+        if self.interaction.menu_open:
+            return 'EXIT_HOVER' if self.interaction.exit_hover else 'CONFIGURATION'
+        return None
+
+    def refresh_visual(self):
+        state = self.animation.states.resolve(self.state, self.busy, self.failed,
+                                               self.animation.sleep.phase, self.temporary_state())
+        self.animation.visual_state = state
+        if state != self.visual_state:
+            self.visual_state = state
+            self.visual_history = (self.visual_history+[state])[-100:]
+            key = {'JUMPING': 'jump_transition_ms', 'LANDING': 'landing_transition_ms',
+                   'WAKE_UP': 'wake_transition_ms', 'FALLING_ASLEEP': 'sleep_transition_ms'}.get(state, 'transition_ms')
+            self.transitions.start(self.atlas.state_models[state], self.animation_settings[key]/1000)
 
     def sleep_timeout_changed(self):
         self.animation.sleep.timeout = self.sleep_after.get()
@@ -110,7 +151,8 @@ class CompanionApp:
         if self.closing:
             return
         self.animation.sleep.update(time.monotonic(), self.busy or self.failed or self.state != 'IDLE'
-                                    or bool(self._drag) or bool(self.terminal and self.terminal.visible))
+                                    or bool(self._drag) or self.interaction.menu_open or bool(self.terminal and self.terminal.visible))
+        self.refresh_visual()
         self.life_job = self.root.after(250, self.life_tick)
 
     def motion_changed(self, *args):
@@ -123,6 +165,7 @@ class CompanionApp:
             native.position(self.root, self.x, self.y)
             self.root.attributes('-alpha', 1)
             self.transitions.finish()
+            self.renderer.landing_scale(1.)
             self.renderer.blink(0)
             self.sleep_bubbles.clear()
         else:
@@ -138,21 +181,27 @@ class CompanionApp:
             return
         now = time.monotonic()
         mx, my, blink, phase = self.animation.sample(now, self.state, self.busy, self.failed,
-                                                    bool(self._drag) or bool(self.terminal and self.terminal.visible))
+                                                    bool(self._drag) or self.interaction.menu_open or bool(self.terminal and self.terminal.visible), self.temporary_state())
+        self.refresh_visual()
         self.renderer.blink(blink if self.animation_settings['blink_enabled'] else 0)
         self.sleep_bubbles.update(now, phase == 'SLEEPING')
-        if not self._drag and not self.hovered:
+        drag_state, drag_y, scale = self.drag_controller.sample(now)
+        self.renderer.landing_scale(scale)
+        if drag_state or not self.hovered:
             dx, dy = mx, my
-            if self.state in ('FOUND', 'RESPONDING'):
+            if drag_state:
+                dx, dy = 0, drag_y
+            elif self.state in ('FOUND', 'RESPONDING'):
                 rx, ry = offset(self.state, now-self.motion_started)
                 dx, dy = dx+rx, dy+ry
             left, top, right, bottom = self.area
-            dx = max(left, min(self.x+dx, right-self.atlas.width))-self.x
-            dy = max(top, min(self.y+dy, bottom-self.atlas.height))-self.y
+            if not self._drag:
+                dx = max(left, min(self.x+dx, right-self.atlas.width))-self.x
+                dy = max(top, min(self.y+dy, bottom-self.atlas.height))-self.y
             if (dx, dy) != self.motion_offset:
                 native.position(self.root, self.x+dx, self.y+dy)
                 self.motion_offset = (dx, dy)
-        self.motion_job = self.root.after(50, self.motion_tick)
+        self.motion_job = self.root.after(160 if phase == 'SLEEPING' else 50, self.motion_tick)
 
     def _restore(self):
         if self.position_file:
@@ -188,6 +237,10 @@ class CompanionApp:
         self.y = max(top, min(self.y, bottom-self.atlas.height))
 
     def press(self, event):
+        self.interaction.close()
+        if self.wake_gate():
+            self._drag = None
+            return
         self.touch()
         self.dismiss_bubble()
         self.motion_offset = (0, 0)
@@ -199,9 +252,14 @@ class CompanionApp:
             mx, my, x, y, moved = self._drag
             dx, dy = event.x_root-mx, event.y_root-my
             if moved or abs(dx)+abs(dy) > 6:
+                if not moved:
+                    self.drag_controller.start(time.monotonic())
+                    self.refresh_visual()
                 self._drag = (mx, my, x, y, True)
                 self.x, self.y = x+dx, y+dy
-                native.show_passive(self.root, self.x, self.y, self.atlas.width, self.atlas.height, self.always_on_top.get())
+                jump_y = self.drag_controller.sample(time.monotonic())[1] if not self.reduced_motion.get() else 0
+                self.motion_offset = (0, jump_y)
+                native.show_passive(self.root, self.x, self.y+jump_y, self.atlas.width, self.atlas.height, self.always_on_top.get())
 
     def release(self, event):
         if not self._drag:
@@ -209,9 +267,13 @@ class CompanionApp:
         moved = self._drag[4]
         self._drag = None
         if moved:
+            self.drag_controller.release(time.monotonic())
+            self.refresh_visual()
             self.area = native.work_area(self.root)
             self._clamp(self.area)
-            native.show_passive(self.root, self.x, self.y, self.atlas.width, self.atlas.height, self.always_on_top.get())
+            dy = 0 if self.reduced_motion.get() else self.drag_controller.sample(time.monotonic())[1]
+            self.motion_offset = (0, dy)
+            native.show_passive(self.root, self.x, self.y+dy, self.atlas.width, self.atlas.height, self.always_on_top.get())
             self._save()
         else:
             self.toggle_terminal()
@@ -222,6 +284,8 @@ class CompanionApp:
         return self.terminal
 
     def toggle_terminal(self):
+        if self.wake_gate(lambda: self.toggle_terminal()):
+            return
         self.touch()
         terminal = self.get_terminal()
         self.dismiss_bubble()
@@ -232,6 +296,8 @@ class CompanionApp:
             terminal.busy(self.busy or self.failed or self.closing)
 
     def open_search(self):
+        if self.wake_gate(self.open_search):
+            return
         self.touch()
         terminal = self.get_terminal()
         terminal.busy(self.busy or self.failed or self.closing)
@@ -242,6 +308,8 @@ class CompanionApp:
             terminal.entry.icursor('end')
 
     def open_settings(self):
+        if self.wake_gate(self.open_settings):
+            return
         self.touch()
         if self.preferences and self.preferences.window.winfo_exists():
             self.preferences.show()
@@ -255,6 +323,7 @@ class CompanionApp:
         if self.menu:
             self.menu.unpost()
             self.menu.grab_release()
+        self.interaction.close()
         if self.menu_action_job:
             self.root.after_cancel(self.menu_action_job)
         def run():
@@ -271,17 +340,16 @@ class CompanionApp:
         self.system_monitor.show()
 
     def context_menu(self, event):
+        if self.wake_gate(lambda: self.context_menu(event)):
+            return
         self.touch()
+        self.menu_terminal_visible = bool(self.terminal and self.terminal.visible)
         if self.menu is not None:
-            try:
-                self.menu.activate('none')
-                self.menu.tk_popup(event.x_root, event.y_root)
-            finally:
-                self.menu.grab_release()
+            self.interaction.open(self.menu, event.x_root, event.y_root)
             return
         menu = tk.Menu(self.root, tearoff=False, bg=BG, fg=FG, font=FONT)
         self.menu = menu
-        menu.add_command(label='Abrir / fechar terminal', command=lambda: self.menu_action(self.toggle_terminal))
+        menu.add_command(label='Abrir / fechar terminal', command=lambda: self.menu_action(self.menu_toggle_terminal))
         menu.add_command(label='Nova pesquisa', command=lambda: self.menu_action(self.open_search))
         menu.add_command(label='Configuração · Tavily / Ollama', command=lambda: self.menu_action(self.open_settings))
         menu.add_command(label='Monitor do sistema', command=lambda: self.menu_action(self.open_system_monitor))
@@ -295,11 +363,14 @@ class CompanionApp:
         menu.add_cascade(label='Dormir após', menu=sleep_menu)
         menu.add_separator()
         menu.add_command(label='Encerrar SAZABI', command=lambda: self.menu_action(self.close))
-        try:
-            menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            menu.grab_release()
-            # Keep callbacks alive: tk_popup can return before a selection.
+        self.interaction.open(menu, event.x_root, event.y_root)
+
+    def menu_toggle_terminal(self):
+        if self.menu_terminal_visible:
+            self.get_terminal().hide()
+        else:
+            self.get_terminal().show()
+            self.get_terminal().busy(self.busy or self.failed or self.closing)
 
     def topmost_changed(self):
         self.root.attributes('-topmost', self.always_on_top.get())
@@ -325,7 +396,7 @@ class CompanionApp:
         self.motion_started = time.monotonic()
         self.state_history.append(state)
         self.state_history = self.state_history[-100:]
-        self.transitions.start(state)
+        self.refresh_visual()
         if self.terminal:
             self.terminal.status.set(state + (' · tarefa em andamento' if self.busy else ' · pronto'))
 
@@ -339,6 +410,8 @@ class CompanionApp:
             self.preferences.busy(value)
 
     def submit(self, command=None):
+        if self.wake_gate(lambda: self.submit(command)):
+            return
         self.touch()
         if self.busy or self.failed or self.closing:
             return
@@ -367,6 +440,8 @@ class CompanionApp:
         self.worker.commands.put(text)
 
     def queue_request(self, request):
+        if self.wake_gate(lambda: self.queue_request(request)):
+            return
         self.touch()
         if self.busy or self.failed or self.closing:
             return
@@ -452,6 +527,7 @@ class CompanionApp:
             return
         self._save()
         self.closing = True
+        self.interaction.close()
         if self.system_monitor:
             self.system_monitor.close()
         self.transitions.finish()
@@ -473,7 +549,7 @@ class CompanionApp:
         if event.widget is self.root:
             if self.system_monitor:
                 self.system_monitor.sampler.close()
-            for job in (self.poll_job, self.idle_job, self.response_job, self.motion_job, self.life_job, self.menu_action_job,
+            for job in (self.poll_job, self.idle_job, self.response_job, self.motion_job, self.life_job, self.menu_action_job, self.wake_job, self.interaction.focus_job,
                         self.transitions.job, self.notifications.job):
                 if job:
                     self.root.after_cancel(job)
