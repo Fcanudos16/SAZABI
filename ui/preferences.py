@@ -36,7 +36,7 @@ class Preferences:
         row.pack(fill='x', pady=7)
         for label, action in [('Atualizar', 'list'), ('Ativar', 'activate'), ('Desativar', 'disable')]:
             self.add_button(row, label, lambda value=action: self.ollama(value)).pack(side='left', padx=(0, 7))
-        tk.Label(body, text='Ollama deve estar aberto. Use /ai Nome da empresa\npara interpretar evidências já coletadas.',
+        tk.Label(body, text='Ollama deve estar aberto. Use /ollama Nome da empresa\npara interpretar evidências já coletadas.',
                  bg=BG, fg=MUTED, font=('Consolas', 9), justify='left').pack(anchor='w', pady=5)
         tk.Label(body, textvariable=self.status, bg=BG, fg=FG, font=FONT, wraplength=420, justify='left').pack(fill='x', pady=12)
         self.window.bind('<Escape>', lambda event: self.window.destroy())

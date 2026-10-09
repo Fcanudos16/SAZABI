@@ -34,6 +34,7 @@ class CompanionApp:
         self.busy, self.ready, self.failed, self.closing = True, False, False, False
         self.terminal, self.preferences, self.bubble = None, None, None
         self.system_monitor = None
+        self.ai_terminal = None
         self.menu, self.menu_action_job = None, None
         self.poll_job, self.idle_job = None, None
         self.response_job, self.found_until = None, 0
@@ -291,9 +292,23 @@ class CompanionApp:
         terminal.busy(self.busy or self.failed or self.closing)
         terminal.show()
         if not (self.busy or self.failed or self.closing):
+            from core.commands.parser import parse
+            try:
+                prepared = parse(terminal.entry.get())
+            except ValueError:
+                prepared = None
+            if prepared and prepared.name == 'search' and prepared.arguments:
+                self.submit(terminal.entry.get())
+                return
             terminal.entry.delete(0, 'end')
-            terminal.entry.insert(0, 'procure empresas em ')
+            terminal.entry.insert(0, '/search ')
             terminal.entry.icursor('end')
+
+    def open_ai(self, draft=''):
+        if self.ai_terminal is None:
+            from ui.ai_terminal import AITerminal
+            self.ai_terminal = AITerminal(self)
+        self.ai_terminal.show(draft)
 
     def open_settings(self):
         if self.wake_gate(self.open_settings):
@@ -363,7 +378,8 @@ class CompanionApp:
         self.root.attributes('-topmost', self.always_on_top.get())
         for window in (self.terminal.window if self.terminal else None,
                        self.preferences.window if self.preferences else None, self.bubble,
-                       self.system_monitor.window if self.system_monitor else None):
+                       self.system_monitor.window if self.system_monitor else None,
+                       self.ai_terminal.window if self.ai_terminal else None):
             if window and window.winfo_exists():
                 window.attributes('-topmost', self.always_on_top.get())
         self._save()
@@ -406,8 +422,14 @@ class CompanionApp:
         text = command if command is not None else terminal.entry.get().strip()
         if not text:
             return
-        if len(text) > 2000:
+        if len(text) > 2000 or '\x00' in text:
             terminal.status.set('Limite: 2.000 caracteres.')
+            return
+        from core.commands.parser import parse
+        try:
+            parse(text)
+        except ValueError as error:
+            terminal.status.set(str(error))
             return
         terminal.entry.delete(0, 'end')
         if re.search(r'\btvly-[A-Za-z0-9_-]+', text):
@@ -424,7 +446,9 @@ class CompanionApp:
         self.dismiss_bubble()
         self.set_busy(True)
         self.set_state('ANALYZING')
-        self.worker.commands.put(text)
+        if not self.worker.submit(text):
+            self.set_busy(False)
+            terminal.status.set('Uma execução já está em andamento.')
 
     def queue_request(self, request):
         if self.wake_gate(lambda: self.queue_request(request)):
@@ -447,6 +471,14 @@ class CompanionApp:
 
     def activity(self, data):
         kind = data['kind']
+        if kind == 'SKILL_STATE':
+            labels = {'idle': 'Pronto', 'queued': 'Preparando pesquisa…', 'running': 'Executando Search Skill…',
+                      'processing': 'Analisando resultados…', 'completed': 'Pesquisa concluída.',
+                      'failed': 'Pesquisa não concluída.', 'cancelled': 'Pesquisa cancelada.'}
+            terminal = self.get_terminal()
+            terminal.status.set(labels.get(data['status'], data['status']))
+            terminal.cancel.configure(state='normal' if data['status'] in ('queued', 'running', 'processing') else 'disabled')
+            return
         if kind == 'SEARCH_RESULT_FOUND':
             self.found_until = time.monotonic() + .45
         if kind in STATE_EVENTS:
@@ -470,6 +502,16 @@ class CompanionApp:
                     # No console, dashboard or persistent bubble is opened at startup.
                 elif kind == 'activity':
                     self.activity(value)
+                elif kind == 'command_result':
+                    self.set_busy(False)
+                    if value.get('data', {}).get('action') == 'open_ai':
+                        self.set_state('IDLE')
+                        self.open_ai(value['data'].get('draft', ''))
+                    else:
+                        self.get_terminal().render_skill(value)
+                        self.operation_failed = not value.get('success', False)
+                        self.notify(value.get('message', '')[:180])
+                        self.idle_job = self.root.after(1200, self.to_idle)
                 elif kind == 'reply':
                     self.get_terminal().append(value + '\n')
                     self.set_busy(False)
@@ -515,6 +557,8 @@ class CompanionApp:
         self._save()
         self.closing = True
         self.interaction.close()
+        if self.ai_terminal:
+            self.ai_terminal.close()
         if self.system_monitor:
             self.system_monitor.close()
         self.transitions.finish()
@@ -534,6 +578,8 @@ class CompanionApp:
 
     def _destroyed(self, event):
         if event.widget is self.root:
+            if self.ai_terminal:
+                self.ai_terminal.close()
             if self.system_monitor:
                 self.system_monitor.sampler.close()
             for job in (self.poll_job, self.idle_job, self.response_job, self.motion_job, self.life_job, self.menu_action_job, self.wake_job, self.interaction.focus_job,

@@ -63,15 +63,15 @@ def test_real_pipeline_events_have_no_fabricated_success(agent):
     events = []
     agent.event_sink = lambda kind, data: events.append((kind, data))
     agent.handle('/search clínicas em Campinas')
-    kinds = [kind for kind, _ in events]
+    kinds = [kind for kind, _ in events if kind != 'SKILL_STATE']
     assert kinds[0] == 'SEARCH_STARTED'
     assert 'SEARCH_PROCESSING' in kinds and 'SEARCH_RESULT_FOUND' in kinds
     assert kinds[-1] == 'SEARCH_COMPLETED'
-    assert events[-1][1]['companies'] == agent.runs.last().new_count
+    assert [data for kind, data in events if kind == 'SEARCH_COMPLETED'][-1]['companies'] == agent.runs.last().new_count
     events.clear()
     agent.finder.sources = []
     agent.handle('/search clínicas em Campinas')
-    assert [kind for kind, _ in events] == ['TASK_ERROR']
+    assert [kind for kind, _ in events if kind != 'SKILL_STATE'] == ['TASK_ERROR']
 
 
 def test_no_results_never_emits_found(agent):
@@ -79,5 +79,6 @@ def test_no_results_never_emits_found(agent):
     agent.event_sink = lambda kind, data: events.append((kind, data))
     agent.handle('/search segmento inexistente em Cidade Inexistente')
     assert 'SEARCH_RESULT_FOUND' not in [kind for kind, _ in events]
-    assert events[-1][0] == 'SEARCH_COMPLETED'
-    assert events[-1][1]['companies'] == events[-1][1]['pages'] == 0
+    assert [kind for kind, _ in events if kind != 'SKILL_STATE'][-1] == 'SEARCH_COMPLETED'
+    completed = [data for kind, data in events if kind == 'SEARCH_COMPLETED'][-1]
+    assert completed['companies'] == completed['pages'] == 0

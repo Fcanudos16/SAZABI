@@ -66,6 +66,6 @@ def test_ai_does_not_mutate_evidence_score_or_history(agent):
     tables = ('companies', 'sources', 'signals', 'hypotheses', 'conversation_history')
     before = {table: [tuple(row) for row in agent.db.query('SELECT * FROM ' + table)] for table in tables}
     with patch('analysis.ai_provider.OllamaProvider.summarize', return_value='Interpretação de teste'):
-        assert 'não validada' in agent.handle('/ai')
+        assert 'não validada' in agent.handle('/ollama')
     after = {table: [tuple(row) for row in agent.db.query('SELECT * FROM ' + table)] for table in tables}
     assert before == after

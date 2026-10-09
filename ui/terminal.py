@@ -23,7 +23,7 @@ class ResultTerminal:
         self.window.configure(bg=BORDER)
         self.window.resizable(False, False)
         self.visible, self.focus_seen = False, False
-        body = tk.Frame(self.window, bg=BG)
+        body = self.body = tk.Frame(self.window, bg=BG)
         body.pack(fill='both', expand=True, padx=1, pady=1)
         header = tk.Frame(body, bg=BG)
         header.pack(fill='x', padx=12, pady=(8, 4))
@@ -33,6 +33,10 @@ class ResultTerminal:
         actions.pack(fill='x', padx=12, pady=(0, 6))
         for text, command in [('Resultados', '/results'), ('Histórico', '/history'), ('Ajuda', '/help')]:
             button(actions, text, lambda value=command: app.submit(value)).pack(side='left', padx=(0, 5))
+        button(actions, 'Nova pesquisa', app.open_search).pack(side='left', padx=5)
+        self.cancel = button(actions, 'Cancelar', app.worker.cancel)
+        self.cancel.pack(side='left')
+        self.cancel.configure(state='disabled')
         self.status = tk.StringVar(value='IDLE · clique direito no mascote para configurar')
         tk.Label(body, textvariable=self.status, anchor='w', bg=BG, fg=MUTED, font=('Consolas', 9)).pack(side='bottom', fill='x', padx=12, pady=8)
         composer = tk.Frame(body, bg=BG)
@@ -41,7 +45,7 @@ class ResultTerminal:
         self.entry = tk.Entry(composer, bg=BG, fg=FG, insertbackground=FG, font=FONT, relief='flat',
                               disabledbackground=BG, disabledforeground=MUTED)
         self.entry.pack(side='left', fill='x', expand=True, ipady=6)
-        self.entry.bind('<Return>', lambda event: app.submit())
+        self.entry.bind('<Return>', self.enter)
         self.send = button(composer, 'Enviar', app.submit)
         self.send.pack(side='right', padx=(5, 0))
         content = tk.Frame(body, bg=BG)
@@ -68,7 +72,27 @@ class ResultTerminal:
         self.window.bind('<Escape>', lambda event: self.hide())
         self.window.bind('<FocusIn>', lambda event: setattr(self, 'focus_seen', True), add='+')
         self.window.bind('<FocusOut>', self._focus_out, add='+')
-        self.append('Clique direito no mascote → Configuração para Tavily/Ollama.\nDigite uma pesquisa ou /help.\n', 'event')
+        from ui.autocomplete import SlashAutocomplete
+        self.autocomplete = SlashAutocomplete(self)
+        self.last_skill_result = None
+        self.append('Clique direito no mascote → Configuração para Tavily/Ollama.\nDigite uma mensagem ou /comando. /search pesquisa; /ai abre a LAYLA.\n', 'event')
+
+    def enter(self, event=None):
+        if self.autocomplete.visible:
+            return self.autocomplete.accept()
+        self.app.submit()
+        return 'break'
+
+    def render_skill(self, result):
+        self.last_skill_result = result
+        self.status.set(result['skill'] + ' · ' + result['status'])
+        self.append(result.get('message') or result.get('error') or 'Sem resposta.',
+                    'result' if result.get('success') else 'error')
+        # Structured data is optional; render it without knowing the provider.
+        if not result.get('message'):
+            for company in result.get('data', {}).get('companies', []):
+                self.append('\n'.join(str(company.get(key) or 'Não informado')
+                            for key in ('name', 'segment', 'location', 'website')))
 
     def _focus_out(self, event):
         if self.visible:
@@ -104,8 +128,12 @@ class ResultTerminal:
 
     def hide(self):
         self.visible = False
+        self.autocomplete.hide()
         self.window.withdraw()
 
     def busy(self, busy):
+        self.cancel.configure(state='disabled')
+        if busy:
+            self.autocomplete.hide()
         self.entry.configure(state='disabled' if busy else 'normal')
         self.send.configure(state='disabled' if busy else 'normal')

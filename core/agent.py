@@ -63,18 +63,49 @@ class SazabiAgent:
         self.memory = Memory(db, config.session_scope)
         self._pending: Optional[Dict] = None      # pergunta aguardando resposta (região / confirmação)
         self.event_sink = None
+        self.skill_context = None
+        self.last_skill_result = None
+        from skills.registry import SkillRegistry
+        from skills.search.skill import SearchSkill
+        from core.commands.router import CommandRouter
+        self.skills = SkillRegistry()
+        self.skills.register(SearchSkill())
+        self.command_router = CommandRouter(self.skills)
 
     def emit(self, kind, **data):
+        if self.skill_context and kind not in ('SKILL_STATE', 'TASK_ERROR'):
+            self.skill_context.checkpoint()
+            if kind == 'SEARCH_PROCESSING' and self.event_sink:
+                self.event_sink('SKILL_STATE', {'skill': 'search', 'status': 'processing'})
         if self.event_sink:
             self.event_sink(kind, data)
 
     # ------------------------------------------------------------------ entrada
-    def handle(self, text: str) -> str:
+    def handle(self, text: str, cancelled=None) -> str:
         import re
+        from core.commands.parser import parse
+        from skills.base import SkillContext
+        self.last_skill_result = None
+        self.command_cancelled = cancelled
+        try:
+            command = parse(text)
+        except ValueError as error:
+            return str(error)
         if re.search(r'\btvly-[A-Za-z0-9_-]+', text):
             return 'Use o campo protegido em Configuração para informar a chave Tavily. Ela não foi salva na conversa.'
-        if text.strip() == '/ai' or text.strip().startswith('/ai '):
-            return self._ai_summary(text.strip()[3:].strip())
+        if command and command.name == 'ollama':
+            return self._ai_summary(command.arguments)
+        if command and self.command_router.registry.get(command.name):
+            context = SkillContext(self)
+            if cancelled is not None:
+                context.cancelled = cancelled
+            if command.name == 'search':
+                self._pending = None
+            self.last_skill_result = self.command_router.execute(text, context)
+            if command.name == 'search':
+                self.memory.log_turn("user", text)
+                self.memory.log_turn("assistant", self.last_skill_result.message)
+            return self.last_skill_result.message
         self.memory.log_turn("user", text)
         try:
             reply = self._dispatch(route(text), text)
@@ -138,6 +169,13 @@ class SazabiAgent:
                 self._pending = None
                 criteria: SearchCriteria = pending["criteria"]
                 criteria.city = title_case_pt(text.strip(" .!?"))[:60]
+                if pending.get('skill_name'):
+                    from skills.base import SkillContext
+                    context = SkillContext(self, criteria=criteria)
+                    if self.command_cancelled is not None:
+                        context.cancelled = self.command_cancelled
+                    self.last_skill_result = self.skills.execute(pending['skill_name'], pending['skill_query'], context)
+                    return self.last_skill_result.message
                 return self._run_search(criteria)
             self._pending = None
             return None
@@ -170,9 +208,12 @@ class SazabiAgent:
         run = self.runs.create(criteria)
         try:
             return self._execute_search(criteria, run)
-        except Exception:
-            run.status = 'failed'
-            run.error_message = 'Pesquisa interrompida por erro interno; resultados podem estar incompletos.'
+        except Exception as failure:
+            from skills.base import ExecutionStopped
+            run.status = 'cancelled' if isinstance(failure, ExecutionStopped) and failure.status == 'cancelled' else 'failed'
+            run.error_message = ('Pesquisa cancelada; resultados parciais preservados.' if run.status == 'cancelled' else
+                                 'Tempo limite atingido; resultados parciais preservados.' if isinstance(failure, ExecutionStopped) else
+                                 'Pesquisa interrompida por erro interno; resultados podem estar incompletos.')
             self.runs.finish(run)
             self.memory.set_last_run(run.id)
             raise
@@ -442,7 +483,7 @@ class SazabiAgent:
     def _cmd_status(self) -> str:
         return reports.format_status({
             "Ambiente": self.config.env, "Modo": "mock (dados fictícios)" if self.config.mock else "real",
-            "Banco": self.config.database_path, "Fontes ativas": ", ".join(s.name for s in self.finder.sources) or "nenhuma",
+            "Banco": "SQLite local", "Fontes ativas": ", ".join(s.name for s in self.finder.sources) or "nenhuma",
             "Região padrão": self.memory.get_setting("region") or self.config.default_region or "não definida",
             "Empresas no banco": self.companies.count(), "Pesquisas realizadas": self.runs.count(),
             "Sinais registrados": self.signals.total(), "Cache": f"{self.config.cache_ttl_hours:g} h",

@@ -145,7 +145,7 @@ def format_history(runs: Sequence[ResearchRun]) -> str:
     for r in runs:
         blocks.append("\n".join([
             f"{fmt_date(r.started_at)}", f"Pesquisa: {r.query}",
-            'Situação: ' + {'completed': 'concluída', 'partial': 'parcial', 'failed': 'falhou', 'running': 'sem conclusão', 'legacy': 'registro anterior'}.get(r.status, r.status) + (' — ' + r.error_message if r.error_message else ''),
+            'Situação: ' + {'completed': 'concluída', 'partial': 'parcial', 'failed': 'falhou', 'cancelled': 'cancelada', 'running': 'sem conclusão', 'legacy': 'registro anterior'}.get(r.status, r.status) + (' — ' + r.error_message if r.error_message else ''),
             f"Encontradas: {r.found} | Duplicadas: {r.duplicates} | Novas: {r.new_count} | Já conhecidas: {r.known_count}",
             f"Investigadas: {r.investigated} | Sinais: {r.signals_count} | Oportunidades potenciais: {r.opportunities}"]))
     return "\n\n".join(blocks)
@@ -188,7 +188,8 @@ Gerenciar
   "ignore essa empresa"                         /ignore [nome]
   /forget [nome]                                apaga os dados da empresa (pede confirmação)
 Outros
-  /ai <nome>                                   interpretação opcional via Ollama local
+  /ai                                          abrir terminal LAYLA (desktop)
+  /ollama <nome>                                   interpretação opcional via Ollama local
   /set region <cidade>                          região padrão para pesquisas
   /status    /help    sair
 

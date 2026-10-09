@@ -108,3 +108,10 @@ O mascote requer Windows. O backend/CLI permanece portátil. O posicionamento fo
 ### Transparência durante animações
 
 A máscara externa também é aplicada ao bitmap de apresentação por uma cor transparente exclusiva, tanto nas poses originais quanto nos quadros com rotação e escala. O Canvas e a camada de transição usam a mesma transparência. Assim, a troca assíncrona entre imagem e região Win32 não expõe o fundo branco do JPEG. Os pixels do personagem e dos olhos são preservados; o arquivo original permanece inalterado. A camada anterior é preparada com opacidade zero antes de aparecer, já alinhada ao deslocamento atual do mascote.
+
+
+## Interação Slash
+
+O terminal principal mantém sua geometria original. As sugestões de `/search` e `/ai` aparecem como sobreposição local, sem alterar o campo de entrada. `Nova pesquisa` aproveita uma consulta preparada; uma trava no worker impede submissões duplicadas. O botão Cancelar atua somente durante a Search Skill.
+
+`/ai` abre outra janela nativa, preta e verde, criada apenas quando solicitada. Histórico e processamento da LAYLA são independentes da pesquisa; sessão, CSRF e transporte ficam em `integrations/layla`. A UI recebe somente resultados públicos. Ollama permanece acessível por `/ollama`.

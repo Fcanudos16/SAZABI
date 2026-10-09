@@ -62,6 +62,9 @@ class CompanyFinder:
                 results.extend(found)
                 self.hits.extend(getattr(source, 'last_hits', []))
             except Exception as error:
+                from skills.base import ExecutionStopped
+                if isinstance(error, ExecutionStopped):
+                    raise
                 from utils.http_client import FetchError
                 detail = str(error) if isinstance(error, FetchError) else 'Falha ao consultar a fonte.'
                 log.warning('Fonte %s: %s', source.name, detail)
@@ -76,6 +79,9 @@ class CompanyFinder:
                 if raw:
                     return raw
             except Exception as error:
+                from skills.base import ExecutionStopped
+                if isinstance(error, ExecutionStopped):
+                    raise
                 from utils.http_client import FetchError
                 self.errors.append(str(error) if isinstance(error, FetchError) else 'Falha ao consultar a fonte.')
         return None

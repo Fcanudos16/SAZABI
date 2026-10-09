@@ -1,7 +1,7 @@
 """Background agent execution, independent of the desktop rendering layer."""
 import logging
 from queue import Queue
-from threading import Thread
+from threading import Thread, Event, Lock
 from dataclasses import dataclass, field
 
 from core.bootstrap import build_agent
@@ -19,9 +19,18 @@ class OllamaRequest:
     model: str = ''
 
 
+@dataclass
+class CommandRequest:
+    text: str
+    cancelled: Event = field(default_factory=Event)
+
+
 class AgentWorker:
     """Creates, uses and closes SQLite on its owning worker thread."""
     def __init__(self, config, factory=build_agent, snapshots=False, progress=False):
+        self._submission_lock = Lock()
+        self._active_request = None
+        self._closed = False
         self.progress = progress
         self.snapshots = snapshots
         self.commands, self.events = Queue(), Queue()
@@ -75,16 +84,30 @@ class AgentWorker:
                 try:
                     if self.progress:
                         self.events.put(('activity', {'kind': 'COMMAND_STARTED'}))
-                    reply = agent.handle(command)
+                    request = command if isinstance(command, CommandRequest) else None
+                    reply = agent.handle(request.text if request else command,
+                                         cancelled=request.cancelled if request else None)
                     if self.progress:
                         self.events.put(('activity', {'kind': 'RESPONSE_READY'}))
-                    self.events.put(('reply', reply))
+                    if request:
+                        with self._submission_lock:
+                            if self._active_request is request:
+                                self._active_request = None
+                    if self.progress and agent.last_skill_result is not None:
+                        self.events.put(('command_result', agent.last_skill_result.to_dict()))
+                    else:
+                        self.events.put(('reply', reply))
                     self._snapshot(agent)
                 except Exception:
                     logging.getLogger('sazabi.desktop').exception('Falha no comando desktop')
                     if self.progress:
                         self.events.put(('activity', {'kind': 'TASK_ERROR', 'message': 'Não consegui concluir o pedido.'}))
                     self.events.put(('reply', 'Falha ao processar o comando. Consulte o log.'))
+                finally:
+                    if isinstance(command, CommandRequest):
+                        with self._submission_lock:
+                            if self._active_request is command:
+                                self._active_request = None
         except Exception:
             logging.getLogger('sazabi.desktop').exception('Falha ao iniciar desktop')
             self.events.put(('error', 'Não foi possível iniciar. Confira a configuração e o log.'))
@@ -102,5 +125,27 @@ class AgentWorker:
                 logging.getLogger('sazabi.desktop').exception('Falha ao atualizar painel')
                 self.events.put(('dashboard_error', 'Não foi possível atualizar as métricas locais.'))
 
+    def submit(self, text):
+        from core.commands.parser import parse
+        command = parse(text)
+        with self._submission_lock:
+            if self._closed or self._active_request is not None or not self.thread.is_alive():
+                return False
+            self._active_request = CommandRequest(text)
+            if self.progress and command and command.name == 'search':
+                self.events.put(('activity', {'kind': 'SKILL_STATE', 'skill': 'search', 'status': 'queued'}))
+            self.commands.put(self._active_request)
+            return True
+
+    def cancel(self):
+        with self._submission_lock:
+            if self._active_request:
+                self._active_request.cancelled.set()
+
     def close(self):
+        with self._submission_lock:
+            if self._closed:
+                return
+            self._closed = True
+        self.cancel()
         self.commands.put(None)

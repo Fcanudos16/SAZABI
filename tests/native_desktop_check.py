@@ -117,6 +117,7 @@ def run(mock=False):
     try:
         wait()
         assert app.terminal is None, 'Startup must not create/show the old UI or console'
+        assert app.ai_terminal is None, 'AI terminal is lazy'
         assert root.overrideredirect()
         from ui.sprites import TRANSPARENT_COLOR
         assert str(root.attributes('-transparentcolor')) == TRANSPARENT_COLOR, repr(root.attributes('-transparentcolor'))
@@ -319,7 +320,7 @@ def run(mock=False):
         popup.event_generate('<Down>')
         popup.event_generate('<Return>')
         tick(.3)
-        assert app.terminal.visible and app.terminal.entry.get() == 'procure empresas em '
+        assert app.terminal.visible and app.terminal.entry.get() == '/search '
         app.terminal.hide()
         app.context_menu(SimpleNamespace(x_root=app.x, y_root=app.y))
         tick(.1)
@@ -329,7 +330,7 @@ def run(mock=False):
         app.terminal.hide()
         app.animation.sleep.phase = 'SLEEPING'
         app.animation.sleep.started = time.monotonic()
-        with patch.object(app.worker.commands, 'put') as enqueue:
+        with patch.object(app.worker, 'submit', return_value=True) as enqueue:
             app.submit('/help')
             assert app.visual_state == 'WAKE_UP' and not enqueue.called
             tick(.35)
@@ -359,7 +360,7 @@ def run(mock=False):
             tick(.5)
         choose('Nova pesquisa')
         assert app.terminal.visible and app.terminal.window.winfo_viewable()
-        assert app.terminal.entry.get() == 'procure empresas em '
+        assert app.terminal.entry.get() == '/search '
         assert root.focus_get() == app.terminal.entry
         choose('Configuração · Tavily / Ollama')
         assert app.preferences.window.winfo_viewable()
@@ -442,6 +443,63 @@ def run(mock=False):
         app.topmost_changed()
         assert not bool(root.attributes('-topmost'))
         # Verify native menu dispatch before closing the event loop used by tick.
+        # Slash completion overlays the existing console without resizing it.
+        app.terminal.show()
+        tick(.2)
+        dimensions = (app.terminal.window.winfo_width(), app.terminal.window.winfo_height())
+        app.terminal.entry.delete(0, 'end')
+        app.terminal.entry.insert(0, '/')
+        app.terminal.autocomplete.refresh()
+        tick(.1)
+        assert app.terminal.autocomplete.visible
+        assert [item.name for item in app.terminal.autocomplete.options] == ['search', 'ai']
+        app.terminal.entry.event_generate('<Tab>')
+        tick(.1)
+        assert app.terminal.entry.get() == '/search '
+        assert dimensions == (app.terminal.window.winfo_width(), app.terminal.window.winfo_height())
+        app.terminal.entry.insert('end', 'clínicas em Campinas')
+        # The connection test above installed a synthetic Tavily credential.
+        # Intercept its search too: native tests must never call an external API.
+        with patch('research.web_source.TavilySearch.search', return_value=[]):
+            with patch.object(app.worker, 'submit', wraps=app.worker.submit) as submit_search:
+                app.open_search()
+                app.open_search()
+                assert submit_search.call_count == 1, 'Prepared query must execute exactly once'
+            wait()
+        result = app.terminal.last_skill_result
+        assert result['skill'] == 'search'
+        assert result['status'] == 'completed'
+        capture(app.terminal.window, 'slash-search.png')
+        # Transport is separately tested against HTTP; this checks native session controls.
+        with patch('integrations.layla.session.LaylaBridge') as bridge_factory:
+            bridge = bridge_factory.return_value
+            bridge.state = 'connected'
+            bridge.send.return_value = 'Resposta da LAYLA simulada exclusivamente neste teste.'
+            app.submit('/ai')
+            deadline = time.monotonic()+5
+            while (app.ai_terminal is None or str(app.ai_terminal.entry['state']) == 'disabled') and time.monotonic() < deadline:
+                tick(.05)
+            ai = app.ai_terminal
+            assert ai and ai.window.winfo_viewable()
+            assert 'conectada' in ai.status.get()
+            ai.entry.insert(0, 'Mensagem de teste')
+            ai.send()
+            ai.send()
+            deadline = time.monotonic()+5
+            while str(ai.entry['state']) == 'disabled' and time.monotonic() < deadline:
+                tick(.05)
+            bridge.send.assert_called_once_with('Mensagem de teste')
+            assert 'Resposta da LAYLA' in ai.output.get('1.0', 'end')
+            capture(ai.window, 'ai-terminal.png')
+            ai.request('reset')
+            tick(.3)
+            bridge.new_session.assert_called_once()
+            assert 'Mensagem de teste' not in ai.output.get('1.0', 'end')
+            ai.hide()
+            assert not ai.window.winfo_viewable()
+            app.open_ai()
+            assert app.ai_terminal is ai and ai.window.winfo_viewable()
+            ai.hide()
         with patch.object(app, 'close') as close_command:
             choose('Encerrar SAZABI')
             close_command.assert_called_once_with()
@@ -451,6 +509,8 @@ def run(mock=False):
         assert not monitor.sampler.thread.is_alive()
         app.worker.thread.join(timeout=5)
         assert not app.worker.thread.is_alive()
+        ai.session.thread.join(timeout=3)
+        assert not ai.session.thread.is_alive()
         print('PASS: official poses, drag/landing/task restore, exit hover, sleep interaction gate, wake queue, animated popup/keyboard, settings, real metrics, shutdown')
     finally:
         app.worker.close()

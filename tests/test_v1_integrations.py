@@ -74,7 +74,7 @@ def test_mock_never_builds_network_providers():
     with patch('research.web_source.TavilySearch', side_effect=AssertionError('network')):
         agent = build_agent(Config(mock=True, database_path=':memory:', search_api_key='secret'))
         assert 'mock' in agent.handle('/status')
-        assert 'desativada' in agent.handle('/ai X')
+        assert 'desativada' in agent.handle('/ollama X')
 
 
 def test_public_address_rejects_private_and_mixed_dns():

@@ -45,6 +45,9 @@ class CompanyInvestigator:
                     source.pages.clear()
                 collected.extend(source.fetch_observations(profile))
             except Exception as error:
+                from skills.base import ExecutionStopped
+                if isinstance(error, ExecutionStopped):
+                    raise
                 from utils.http_client import FetchError
                 detail = str(error) if isinstance(error, FetchError) else 'Coleta indisponível.'
                 log.warning('Fonte %s: %s', source.name, detail)
