@@ -120,6 +120,7 @@ def _raw(entry: Dict) -> RawCompany:
 
 
 class MockSource(CompanySource):
+    search_skill_cost_policy = 'test_fixture'
     name = "mock"
 
     def __init__(self, data: Optional[List[Dict]] = None):

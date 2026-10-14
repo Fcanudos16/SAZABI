@@ -1,6 +1,6 @@
 # SAZABI — inteligência comercial local
 
-Mascote de desktop que pesquisa páginas públicas pela **Tavily**, identifica empresas a partir dos próprios sites e organiza evidências e possíveis oportunidades em SQLite. Ao iniciar, aparece somente o personagem 2D da arte original do usuário. Não abre dashboard, navegador, servidor ou porta web.
+Mascote de desktop com pesquisa legada pela **Tavily** e Search Skill com política de custo zero (veja a limitação abaixo), que identifica empresas a partir dos próprios sites e organiza evidências e possíveis oportunidades em SQLite. Ao iniciar, aparece somente o personagem 2D da arte original do usuário. Não abre dashboard, navegador, servidor ou porta web.
 
 **O uso normal não carrega empresas fictícias.** A base começa vazia. Dados sintéticos existem apenas em `tests/`, para testes isolados; o antigo comando `--mock` foi removido.
 
@@ -19,7 +19,7 @@ No Windows, abra `iniciar_sazabi.cmd` para iniciar com `pythonw`, sem manter um 
 
 1. Clique com o botão direito no **mascote → Configuração · Tavily / Ollama**.
 2. Cole sua chave obtida no [painel da Tavily](https://app.tavily.com/).
-3. Clique em **Salvar e conectar**. O SAZABI valida a chave no endpoint de uso da conta, salva no `.env` local e habilita a pesquisa sem reiniciar.
+3. Clique em **Salvar e conectar**. O SAZABI valida a chave no endpoint de uso da conta, salva no `.env` local e habilita a pesquisa legada sem reiniciar. Isso não habilita `/search`, que exige custo zero.
 4. Clique no mascote para abrir o terminal e envie, por exemplo, `procure clínicas em Campinas`.
 
 ### Usar o mascote
@@ -58,7 +58,8 @@ O score indica prioridade de investigação, não probabilidade de venda. Hipót
 
 | Ação | Exemplo |
 |---|---|
-| Pesquisar | `/search clínicas em Campinas` |
+| Search Skill (exige adaptador gratuito; ainda indisponível) | `/search clínicas em Campinas` |
+| Pesquisa legada Tavily (consome créditos da conta) | `/research clínicas em Campinas` |
 | Investigar empresa | `/investigate Nome da empresa` |
 | Investigar site | `/investigate https://site-oficial.example` — substitua pelo site real |
 | Atualizar investigação | `/investigate Nome da empresa --refresh` |
@@ -149,7 +150,7 @@ O mascote usa animações lentas e discretas permanentemente; não há opção d
 
 A caixa do SAZABI mantém 620 × 440 pixels (ou o limite da área útil da tela). Digitar `/` abre sugestões locais sobre a área de resultados; setas selecionam, Tab/Enter completam e Escape fecha as sugestões.
 
-- `/search empresas de tecnologia em São Paulo`: executa a Search Skill no backend, usando os serviços reais já existentes. Resultados continuam no terminal principal e no SQLite.
+- `/search empresas de tecnologia em São Paulo`: aciona a Search Skill de custo zero. Sem adaptador gratuito autorizado, retorna configuração ausente, mesmo que exista chave Tavily. Veja a seção de estado da implementação ao final.
 - **Nova pesquisa**: executa uma consulta `/search ...` já preparada uma única vez. Sem consulta, prepara `/search ` para digitação.
 - **Cancelar**: disponível durante a Search Skill. Interrompe entre etapas/requisições; a chamada HTTP atual ainda pode aguardar seu timeout. Dados já gravados são preservados e a execução fica marcada como cancelada.
 - `/ai`: abre exclusivamente o **SAZABI AI TERMINAL**. `/ai texto` preenche um rascunho, sem enviá-lo automaticamente.
@@ -159,7 +160,7 @@ A caixa do SAZABI mantém 620 × 440 pixels (ou o limite da área útil da tela)
 
 `core/commands/parser.py` separa comando e argumentos; `registry.py` contém metadados públicos; `router.py` encaminha para Skills ou ações da interface. A pesquisa não está no parser.
 
-`skills/search/skill.py` implementa `execute(query, context)` e adapta os serviços existentes do agente. `skills/search/config.json` controla `enabled` e `timeout_seconds` (5–600 segundos, limite cooperativo entre etapas/requisições). Sem fontes/chave ou configuração válida, a resposta é `unconfigured`, sem resultados inventados. Não foram adicionados filtros ou mecanismos fictícios.
+`skills/search/skill.py` implementa `execute(query, context)` e adapta os serviços existentes do agente. `skills/search/config.json` controla `enabled` e `timeout_seconds` (5–600 segundos, limite cooperativo entre etapas/requisições). Sem fonte gratuita autorizada ou configuração válida, a resposta é `unconfigured`, sem resultados inventados. Uma chave Tavily não habilita esta skill. Não foram adicionados filtros ou mecanismos fictícios.
 
 Cada Skill fornece `name`, `description`, `version`, `enabled`, `commands` e `execute`. Registre outra implementação com `agent.skills.register(skill)` e seu comando com `agent.command_router.registry.register(CommandDefinition(...))`. Para substituir a implementação de pesquisa, use `register(skill, replace=True)`; o parser e a UI permanecem iguais. Inclua novos comandos no registro padrão para aparecerem no autocomplete.
 
@@ -181,3 +182,18 @@ No modo local da LAYLA sem conta proprietária, uma sessão própria é criada a
 O terminal mostra estado verificado da conexão, processamento, histórico da sessão, **Conectar**, **Nova sessão** e **Fechar**. Fechar esconde a janela e preserva a conversa; encerrar o SAZABI fecha a conexão. Nova sessão só limpa o histórico exibido após confirmação da LAYLA. O histórico visual é limitado e fica em memória; a LAYLA pode persistir as mensagens conforme sua própria configuração. O SAZABI envia apenas o texto digitado, nunca todo o banco ou leads automaticamente. Ações retornadas pela LAYLA não são executadas pelo SAZABI.
 
 Validação de contrato: `tests/test_layla_bridge.py` usa um servidor HTTP isolado, com dados explicitamente de teste. Isso não comprova que uma instalação real da LAYLA está online ou que seu modelo está configurado.
+
+## Skill SAZABI Search: política de custo zero
+
+A especificação fornecida pelo usuário está preservada em `skills/search/SKILL.md`, vinculada ao comando `/search` por `SearchSkill.specification`.
+
+**Mudança de comportamento:** `/search` não utiliza mais Tavily. Uma chave Tavily ou uma cota promocional não comprova custo zero. Antes de qualquer pesquisa ou enriquecimento, a skill exige adaptadores gratuitos autorizados. Nenhum adaptador de produção compatível está instalado nesta versão: o comando informa `unconfigured`, sem chamadas externas, sem criar uma pesquisa concluída e sem resultados artificiais. Os demais comandos legados continuam com sua configuração anterior; esta restrição se aplica à Search Skill.
+
+`/search` sem argumentos usa a região salva por `/set` ou `DEFAULT_REGION`. Quando ela falta, pede apenas a região e continua pela mesma skill ao receber a resposta. A skill não chama LAYLA ou Ollama.
+
+### Estado da implementação da especificação
+
+- Integrados: documento original, vínculo com `/search`, bloqueio de provedores com créditos/cobrança, verificação de descoberta e enriquecimento, região padrão e resposta de configuração ausente.
+- Pendente de implementação: adaptador gratuito autorizado, descoberta em duas passagens, nova pontuação 0–100, confiança e formato de leads descritos no documento, rotação de nichos e estados adicionais de prospecção. O pipeline anterior não deve ser confundido com a implementação desses critérios.
+- A marca `search_skill_cost_policy = 'zero_cost'` é um contrato de implementação do adaptador, não uma opção do `.env`. Só deve ser declarada após verificar o serviço, permissões e implementar os critérios pendentes acima. Não marque o adaptador Tavily como gratuito.
+- Fixtures sintéticas são aceitas exclusivamente em testes com `mock=True`; não habilitam pesquisas de produção.

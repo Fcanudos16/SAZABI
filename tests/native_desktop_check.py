@@ -468,7 +468,7 @@ def run(mock=False):
             wait()
         result = app.terminal.last_skill_result
         assert result['skill'] == 'search'
-        assert result['status'] == 'completed'
+        assert result['status'] == 'unconfigured'  # Tavily is not a zero-cost adapter
         capture(app.terminal.window, 'slash-search.png')
         # Transport is separately tested against HTTP; this checks native session controls.
         with patch('integrations.layla.session.LaylaBridge') as bridge_factory:

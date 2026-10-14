@@ -9,6 +9,7 @@ class SearchSkill:
     description = 'Pesquisa e prospecção comercial'
     version = '1.0.0'
     commands = ('/search',)
+    specification = Path(__file__).with_name('SKILL.md')
 
     def __init__(self, config_path=None):
         self.state = 'idle'
@@ -24,15 +25,30 @@ class SearchSkill:
 
     def execute(self, query, context):
         agent = context.agent
-        if self.config_error or not agent.finder.sources:
+        criteria = context.criteria or parse_criteria(query)
+        if not criteria.city:
+            criteria.city = agent.memory.get_setting('region') or agent.config.default_region
+        if not criteria.city and not self.config_error:
+            agent._pending = dict(type='region', criteria=criteria,
+                                  skill_name=self.name, skill_query=query)
+            self.state = 'idle'
+            return SkillResult(False, self.name, 'needs_input', message='Qual região devo pesquisar?')
+        # Explicit opt-in belongs to the adapter implementation, not to an API key
+        # or a claimed free tier. Check discovery AND enrichment before any call.
+        sources = agent.finder.sources + agent.investigator.sources
+        allowed = bool(agent.finder.sources) and all(
+            getattr(source, 'search_skill_cost_policy', None) == 'zero_cost'
+            or (agent.config.mock and getattr(source, 'search_skill_cost_policy', None) == 'test_fixture')
+            for source in sources)
+        if self.config_error or not self.specification.is_file() or not allowed:
             self.state = 'failed'
-            message = 'Pesquisa não iniciada. Search Skill ainda não configurada. Abra Configuração e conecte a Tavily para habilitar a pesquisa real.'
+            message = ('Pesquisa não iniciada. Search Skill ainda não configurada para custo zero. '
+                       'Falta um adaptador de pesquisa gratuito e autorizado, sem créditos ou cobrança, '
+                       'compatível com skills/search/SKILL.md. A chave Tavily não habilita esta skill. '
+                       'Nenhuma consulta foi enviada e nenhum resultado foi fabricado.')
             context.state('failed')
             agent.emit('TASK_ERROR', message=message)
             return SkillResult(False, self.name, 'unconfigured', message=message, error='Pesquisa não iniciada.')
-        if not query.strip():
-            self.state = 'idle'
-            return SkillResult(False, self.name, 'needs_input', message='Digite /search seguido do que deseja pesquisar e da região.')
         context.timeout = self.timeout
         agent.skill_context = context
         from utils.http_client import HttpClient
@@ -49,7 +65,7 @@ class SearchSkill:
         try:
             previous = agent.runs.last()
             context.checkpoint()
-            message = agent._cmd_search(context.criteria or parse_criteria(query))
+            message = agent._cmd_search(criteria)
             run = agent.runs.last()
             if run is None or (previous and run.id == previous.id):
                 if agent._pending and agent._pending.get('type') == 'region':

@@ -44,7 +44,7 @@ def test_pending_real_hits_survive_restart_without_fake_companies(tmp_path):
     client.request.side_effect = FetchError('Acesso recusado', status=403)
     config = Config(database_path=str(tmp_path / 'actual.db'))
     agent = build_agent(config, sources=[WebSource(provider, client)])
-    reply = agent.handle('/search petshops em Campinas')
+    reply = agent.handle('/research petshops em Campinas')
     assert 'pendentes de identificação' in reply and 'https://example.org/' in reply
     assert agent.companies.count() == 0
     assert 'petshops' in provider.search.call_args.args[0]
@@ -62,7 +62,7 @@ def test_bad_key_records_failure_not_success():
     provider.search.side_effect = FetchError('Chave API inválida', status=401)
     agent = build_agent(Config(database_path=':memory:'), sources=[WebSource(provider)])
     try:
-        assert 'Pesquisa não concluída' in agent.handle('/search clínicas em Campinas')
+        assert 'Pesquisa não concluída' in agent.handle('/research clínicas em Campinas')
         assert agent.runs.last().status == 'failed'
         assert 'Chave API inválida' in agent.handle('/history')
         assert agent.companies.count() == 0
@@ -111,7 +111,7 @@ def test_production_never_loads_test_data():
     try:
         assert not agent.finder.sources
         assert agent.companies.count() == 0
-        assert 'Pesquisa não iniciada' in agent.handle('/search clínicas em Campinas')
+        assert 'Pesquisa não iniciada' in agent.handle('/research clínicas em Campinas')
         assert agent.runs.count() == 0
     finally:
         agent.db.close()
@@ -128,7 +128,7 @@ def test_production_pipeline_uses_attributed_web_evidence_and_persists(tmp_path)
     config = Config(database_path=str(tmp_path / 'pipeline.db'))
     agent = build_agent(config, sources=[WebSource(provider, client)])
     try:
-        report = agent.handle('/search empresas em Campinas')
+        report = agent.handle('/research empresas em Campinas')
         assert 'Empresa Teste' in report and 'https://example.org/' in report
         profile = agent.companies.search_by_name('Empresa Teste')[0]
         assert profile.city == 'Campinas' and profile.segment is None
