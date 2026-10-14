@@ -71,7 +71,7 @@ class AgentWorker:
                     from utils.http_client import FetchError
                     try:
                         connect(agent, command.key)
-                        self.events.put(('connected', 'Tavily conectada. Chave salva. Você já pode pesquisar.'))
+                        self.events.put(('connected', 'Tavily conectada. Chave salva para a pesquisa legada. /search exige um adaptador gratuito autorizado.'))
                     except (FetchError, ValueError) as error:
                         self.events.put(('connection_error', str(error)))
                     except OSError:

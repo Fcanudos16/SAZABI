@@ -173,7 +173,9 @@ def format_help() -> str:
 Fale naturalmente ou use comandos:
 
 Pesquisar
-  "procure pequenas clínicas em São Paulo"      /search clínicas em Campinas
+  /search clínicas em Campinas                 skill de custo zero; exige adaptador gratuito autorizado
+  /research clínicas em Campinas               pesquisa legada Tavily; usa créditos da conta
+  "procure pequenas clínicas em São Paulo"      também usa a pesquisa legada Tavily
   "faça uma pesquisa silenciosa por oficinas em Campinas"  (só envia o resumo)
 Investigar
   "investigue a Oficina Silva"                  /investigate Oficina Silva
@@ -188,7 +190,7 @@ Gerenciar
   "ignore essa empresa"                         /ignore [nome]
   /forget [nome]                                apaga os dados da empresa (pede confirmação)
 Outros
-  /ai                                          abrir terminal LAYLA (desktop)
+  /ai [texto]                                  abrir terminal LAYLA; texto vira rascunho para enviar
   /ollama <nome>                                   interpretação opcional via Ollama local
   /set region <cidade>                          região padrão para pesquisas
   /status    /help    sair

@@ -38,7 +38,9 @@ def is_same_company(a, b) -> bool:
     pa, pb = normalize_phone(getattr(a, "phone", None)), normalize_phone(getattr(b, "phone", None))
     if pa and pa == pb:
         return True
-    if normalize_city(getattr(a, "city", None)) != normalize_city(getattr(b, "city", None)):
+    city_a = normalize_city(getattr(a, "city", None))
+    city_b = normalize_city(getattr(b, "city", None))
+    if not city_a or not city_b or city_a != city_b:
         return False
     na, nb = normalize_name(a.name), normalize_name(b.name)
     aa, ab = normalize_address(getattr(a, "address", None)), normalize_address(getattr(b, "address", None))

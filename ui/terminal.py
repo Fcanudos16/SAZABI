@@ -75,7 +75,7 @@ class ResultTerminal:
         from ui.autocomplete import SlashAutocomplete
         self.autocomplete = SlashAutocomplete(self)
         self.last_skill_result = None
-        self.append('Clique direito no mascote → Configuração para Tavily/Ollama.\nDigite uma mensagem ou /comando. /search pesquisa; /ai abre a LAYLA.\n', 'event')
+        self.append('Clique direito no mascote → Configuração para Tavily/Ollama.\n/search exige uma fonte gratuita; /research usa Tavily (créditos).\n/ai abre a LAYLA; o texto é um rascunho até você enviar.\n', 'event')
 
     def enter(self, event=None):
         if self.autocomplete.visible:

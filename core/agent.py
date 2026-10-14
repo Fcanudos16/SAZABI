@@ -94,13 +94,14 @@ class SazabiAgent:
         if re.search(r'\btvly-[A-Za-z0-9_-]+', text):
             return 'Use o campo protegido em Configuração para informar a chave Tavily. Ela não foi salva na conversa.'
         if command and command.name == 'ollama':
+            self._pending = None
             return self._ai_summary(command.arguments)
         if command and self.command_router.registry.get(command.name):
+            # A new explicit command ends any previous confirmation/question.
+            self._pending = None
             context = SkillContext(self)
             if cancelled is not None:
                 context.cancelled = cancelled
-            if command.name == 'search':
-                self._pending = None
             self.last_skill_result = self.command_router.execute(text, context)
             if command.name == 'search':
                 self.memory.log_turn("user", text)
