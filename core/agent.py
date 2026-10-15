@@ -339,6 +339,13 @@ class SazabiAgent:
             log.exception("Falha ao enviar notificação (%s)", kind)
 
     # ------------------------------------------------------------------ investigação
+    def _qualify_local(self, identity):
+        from analysis.commercial import CommercialService
+        try:
+            CommercialService(self.db,self.config).qualify(identity)
+        except ValueError:
+            self.emit('TASK_PROCESSING',message='Perfil comercial indisponível. Revise /profile; pesquisa preservada.')
+
     def _investigate(self, profile: CompanyProfile, refresh: bool) -> Outcome:
         stored = self.sources.list_for_company(profile.id)
         self.emit('TASK_PROCESSING' if not refresh and self.investigator.is_fresh(profile) else 'SEARCH_STARTED',
@@ -348,6 +355,8 @@ class SazabiAgent:
             profile.observations = result.observations
             profile.signals = self.signals.list_for_company(profile.id)
             profile.hypotheses = self.hypotheses.list_for_company(profile.id)
+            if not result.failed:
+                self._qualify_local(profile.id)
             return Outcome(profile, result.observations, profile.signals, profile.hypotheses, result.from_cache)
 
         self.emit('SEARCH_PROCESSING', message='Analisando evidências de ' + profile.name + '.')
@@ -363,6 +372,7 @@ class SazabiAgent:
                 self.companies.set_status(profile.id, "RESEARCHED")
                 profile.status = "RESEARCHED"
             self.companies.update(profile)
+            self._qualify_local(profile.id)
         return Outcome(profile, result.observations, signals, hypotheses, False)
 
     def _resolve_company(self, target: Optional[str], allow_lookup: bool = False

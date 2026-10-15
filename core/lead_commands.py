@@ -59,6 +59,9 @@ class LeadCommands:
             for row in rows:
                 duplicates=self.leads.duplicates(row['id'])
                 lines.append(f"{row['id']} | {row['name']} | {STAGES[row['commercial_status']]} | {row['city'] or 'Localidade não informada'}" + (' | possível duplicação: revisar /lead' if duplicates else ''))
+                if row['qualification_score'] is not None:
+                    from analysis.qualification import LABELS
+                    lines.append(f"  Última avaliação salva: {row['qualification_score']}/100 — {LABELS[row['qualification_category']]}; /qualify ID revalida.")
             if not rows: lines.append('Nenhum lead corresponde aos filtros.')
             lines.append('Detalhes: /lead ID · Estágio: /stage ID estágio · Notas: /note ID texto\nSalvar: /save ID · Arquivar: /archive ID · Exportar: /export csv|json ID,ID')
             return '\n'.join(lines),'completed'
@@ -78,7 +81,11 @@ class LeadCommands:
             lines=[f"Lead: {row['name']}\nID: {identity}\nEstágio: {STAGES[row['commercial_status']]} · Arquivado: {'sim' if row['archived'] else 'não'}"]
             for field,label in [('website','Site'),('segment','Segmento'),('city','Cidade'),('phone','Contato comercial'),('address','Endereço'),('description','Descrição'),('notes','Observações'),('first_seen','Criado'),('updated_at','Atualizado'),('last_researched','Última verificação')]:
                 lines.append(label+': '+str(row[field] or 'Não informado'))
-            lines.append(f"Pontuação indicativa existente: {data['score']}/100 (não é probabilidade de venda)")
+            if data['evaluations']:
+                from analysis.qualification import LABELS
+                last=data['evaluations'][0]
+                lines.append(f"Última avaliação salva: {last['score']}/100 — {LABELS[last['category']]} · {last['evaluated_at']}")
+            lines.append('Qualificar/revalidar: /qualify '+identity+' · Histórico: /evaluations '+identity+' · Rascunho: /draft '+identity+' email')
             lines.extend('Hipótese: '+h['solution']+' — '+h['evidence_level'] for h in data['opportunities'])
             lines.append('Fontes (últimas 20; exportação contém o histórico completo):')
             lines.extend(f"{s['retrieved_at']} | {s['source_name']} | {s['url'] or 'URL não informada'} | {s['text']}" for s in data['sources'][-20:])

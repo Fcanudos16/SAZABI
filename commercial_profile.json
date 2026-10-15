@@ -1,0 +1,13 @@
+{
+  "services": null,
+  "technologies": [],
+  "accepted_projects": [],
+  "priority_segments": [],
+  "priority_locations": [],
+  "company_sizes": [],
+  "excluded_projects": [],
+  "differentiators": [],
+  "weights": {"service_fit": 25, "evidence": 25, "digital_features": 10, "segment": 10, "customer_profile": 10, "information_quality": 15, "public_contact": 5},
+  "thresholds": {"moderate": 40, "high": 70},
+  "fresh_days": 90
+}

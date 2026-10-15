@@ -56,6 +56,10 @@ O score indica prioridade de investigação, não probabilidade de venda. Hipót
 
 ## Comandos
 
+### Qualificação comercial (fase 3)
+
+Sem API: `/profile` configura capacidades reais; `/qualify ID` avalia fontes salvas e explica a pontuação; `/evaluations ID` conserva o histórico. `/draft ID email|message|call` prepara uma abordagem para revisão e `/draft-save` guarda a prévia, sem envio. `/qualify-ai ID` prepara um resumo opcional para revisar antes de enviar à LAYLA. Consulte [FASE3_INTELIGENCIA.md](FASE3_INTELIGENCIA.md) para pesos, categorias, configuração e limites.
+
 | Ação | Exemplo |
 |---|---|
 | Search Skill (exige adaptador gratuito; ainda indisponível) | `/search clínicas em Campinas` |

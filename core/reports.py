@@ -194,6 +194,14 @@ Gerenciar leads locais
   /action ID response|next|note texto           registrar ação comercial, sem enviar mensagens
   /archive ID                                  arquivar com confirmação; /restore ID restaura
   /export csv|json ID,ID                        somente IDs selecionados; arquivos locais
+Qualificação comercial local
+  /profile                                    perfil; /profile set services item;item edita
+  /qualify ID [--refresh]                      critérios, fontes, hipóteses e próxima ação
+  /evaluations ID [número]                     histórico preservado de avaliações
+  /draft ID email|message|call                 prévia personalizada para revisão
+  /draft-save                                 guardar a última prévia; não envia
+  /drafts ID                                  consultar rascunhos salvos
+  /qualify-ai ID [summary|compare|questions|draft]  resumo para revisar na LAYLA
 Gerenciar
   "guarde essa empresa"                         /save [nome]
   "ignore essa empresa"                         /ignore [nome]

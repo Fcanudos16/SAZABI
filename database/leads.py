@@ -44,7 +44,10 @@ class LeadRepository:
         if city:
             clauses.append('city_key=?'); args.append(normalize_city(city))
         if saved: clauses.append('id IN (SELECT company_id FROM saved_companies)')
-        rows = [dict(r) for r in self.db.query('SELECT * FROM companies WHERE ' + ' AND '.join(clauses) + ' ORDER BY name,id', args)]
+        rows = [dict(r) for r in self.db.query('SELECT companies.*, '
+            '(SELECT score FROM lead_evaluations e WHERE e.company_id=companies.id ORDER BY e.id DESC LIMIT 1) AS qualification_score, '
+            '(SELECT category FROM lead_evaluations e WHERE e.company_id=companies.id ORDER BY e.id DESC LIMIT 1) AS qualification_category '
+            'FROM companies WHERE ' + ' AND '.join(clauses) + ' ORDER BY name,id', args)]
         if segment: rows = [r for r in rows if normalize_name(segment) in normalize_name(r['segment'])]
         return rows[offset:offset+50]
 
@@ -105,7 +108,11 @@ class LeadRepository:
         # Explicit export allowlist: configuration and conversation tables never enter.
         data={k:row[k] for k in ('id','name','normalized_name','website','domain','segment','city','state','address','phone','description','commercial_status','notes','archived','first_seen','updated_at','last_researched')}
         data['social_profiles']=json.loads(row['social_profiles'] or '{}')
-        data['score']=opportunity_score(SignalRepository(self.db).list_for_company(row['id']))
+        data['legacy_signal_score']=opportunity_score(SignalRepository(self.db).list_for_company(row['id']))
+        from analysis.commercial import CommercialService
+        data['evaluations']=[CommercialService.unpack(r) for r in self.db.query('SELECT * FROM lead_evaluations WHERE company_id=? ORDER BY id DESC',(row['id'],))]
+        data['score']=data['evaluations'][0]['score'] if data['evaluations'] else None
+        data['drafts']=[dict(r) for r in self.db.query('SELECT id,evaluation_id,format,body,created_at FROM commercial_drafts WHERE company_id=? ORDER BY id',(row['id'],))]
         data['opportunities']=[{'solution':h.solution,'reasons':h.reasons,'evidence_level':h.evidence_level} for h in HypothesisRepository(self.db).list_for_company(row['id'])]
         data['sources']=[dict(r) for r in self.db.query('SELECT source_name,url,text,retrieved_at FROM source_history WHERE company_id=? ORDER BY id', (row['id'],))]
         data['research_runs']=[dict(r) for r in self.db.query('SELECT r.id,r.query,r.started_at,r.finished_at,r.status,r.error_message FROM research_runs r JOIN run_companies rc ON rc.run_id=r.id WHERE rc.company_id=? ORDER BY r.id', (row['id'],))]

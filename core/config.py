@@ -34,6 +34,7 @@ class Config:
     ai_provider: str = 'none'
     ollama_model: str = ''
     session_scope: str = ''
+    commercial_profile_path: str = str(Path(__file__).resolve().parents[1] / 'commercial_profile.json')
     layla_url: str = 'http://127.0.0.1:5000'
     layla_session_cookie: str = field(default='', repr=False)
 
@@ -109,5 +110,6 @@ def load_config(env_file: str = ".env", services_file: str = "services.yaml",
                   telegram_token=get('TELEGRAM_BOT_TOKEN', ''),
                   telegram_allowed_ids=allowed_ids,
                   ai_provider=get('AI_PROVIDER', 'none'), ollama_model=get('OLLAMA_MODEL', ''),
+                  commercial_profile_path=str((Path(env_file).resolve().parent / get('COMMERCIAL_PROFILE_PATH', str(Path(__file__).resolve().parents[1] / 'commercial_profile.json'))).resolve()),
                   layla_url=get('LAYLA_URL', 'http://127.0.0.1:5000'),
                   layla_session_cookie=get('LAYLA_SESSION_COOKIE', ''))

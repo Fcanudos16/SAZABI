@@ -30,4 +30,7 @@ def default_registry():
     from core.lead_commands import COMMANDS
     for name, description in COMMANDS.items():
         registry.register(CommandDefinition(name, description, action="lead"))
+    from core.commercial_commands import COMMANDS as COMMERCIAL
+    for name, description in COMMERCIAL.items():
+        registry.register(CommandDefinition(name, description, action='commercial'))
     return registry

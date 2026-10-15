@@ -16,6 +16,9 @@ class CommandRouter:
         if definition.action == 'lead':
             from core.lead_commands import LeadCommands
             return LeadCommands(context.agent).execute(command.name, command.arguments)
+        if definition.action == 'commercial':
+            from core.commercial_commands import CommercialCommands
+            return CommercialCommands(context.agent).execute(command.name, command.arguments)
         if definition.action == 'open_ai':
             return SkillResult(True, 'layla', 'ready', 'Use /ai na interface desktop para abrir o terminal LAYLA.',
                                {'action': 'open_ai', 'draft': command.arguments})

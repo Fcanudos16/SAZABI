@@ -53,6 +53,12 @@ def run():
                 terminal.request('reset')
                 wait(lambda: str(terminal.entry['state']) == 'normal')
                 assert all(text != 'Resposta sintética da auditoria.' for role, text in terminal.history)
+                terminal.busy(True)
+                terminal.show('Nova prévia enquanto ocupado')
+                assert terminal.pending_draft == 'Nova prévia enquanto ocupado'
+                terminal.busy(False)
+                assert terminal.entry.get() == 'Nova prévia enquanto ocupado'
+                assert bridge.send.call_count == 1
                 assert app.terminal.last_skill_result['skill'] == 'search'
             print('PASS: native /search duplicate guard, unconfigured state, no external call; /ai draft, send, reset and independent result.')
         finally:

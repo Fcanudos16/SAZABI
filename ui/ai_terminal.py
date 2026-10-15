@@ -11,6 +11,7 @@ class AITerminal:
         self.app, self.session_factory = app, session_factory
         self.session, self.job, self.closed = None, None, False
         self.history = []
+        self.pending_draft = ''
         self.window = tk.Toplevel(app.root)
         self.window.withdraw()
         self.window.title('SAZABI AI TERMINAL')
@@ -70,9 +71,10 @@ class AITerminal:
         self.window.deiconify()
         native.position(self.window, x, y)
         self.window.lift()
-        if draft and str(self.entry['state']) != 'disabled':
-            self.entry.delete(0, 'end')
-            self.entry.insert(0, draft)
+        if draft:
+            self.append('SAZABI', 'Prévia para revisão (não enviada). LAYLA pode usar serviços pagos; respostas não alteram a avaliação local.\n'+draft)
+            self.pending_draft=draft
+            self.apply_draft()
         self.entry.focus_force()
         if self.session is None:
             self.request('connect')
@@ -80,6 +82,14 @@ class AITerminal:
     def busy(self, value):
         for control in (self.entry, self.send_button, self.connect_button, self.reset_button):
             control.configure(state='disabled' if value else 'normal')
+        if not value:
+            self.apply_draft()
+
+    def apply_draft(self):
+        if self.pending_draft and str(self.entry['state'])!='disabled':
+            self.entry.delete(0,'end')
+            self.entry.insert(0,self.pending_draft)
+            self.pending_draft=''
 
     def request(self, action, text=''):
         if self.closed:

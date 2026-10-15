@@ -52,7 +52,7 @@ class SlashAutocomplete:
         index = self.box.curselection()
         command = self.options[index[0] if index else 0]
         self.entry.delete(0, 'end')
-        self.entry.insert(0, '/' + command.name + (' ' if command.skill or command.action == 'lead' else ''))
+        self.entry.insert(0, '/' + command.name + (' ' if command.skill or command.action in ('lead','commercial') else ''))
         self.entry.icursor('end')
         self.entry.focus_set()
         self.hide()
