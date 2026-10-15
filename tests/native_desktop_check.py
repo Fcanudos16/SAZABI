@@ -144,11 +144,11 @@ def run(mock=False):
         foreground = native.api()[0].GetForegroundWindow()
         app.set_state('ANALYZING')
         tick(.12)
-        assert app.transitions.ghost is not None
-        assert str(app.transitions.ghost.attributes('-transparentcolor')) == TRANSPARENT_COLOR
-        assert 0 < float(root.attributes('-alpha')) < 1
+        assert app.transitions.job is not None
+        assert not any(isinstance(child,tk.Toplevel) for child in root.winfo_children()), 'Expression transitions must not create overlapping mascot windows'
+        assert .55 <= float(root.attributes('-alpha')) < 1
         tick(.4)
-        assert app.transitions.ghost is None and float(root.attributes('-alpha')) == 1
+        assert app.transitions.job is None and float(root.attributes('-alpha')) == 1
         assert native.api()[0].GetForegroundWindow() == foreground
         app.set_state('IDLE')
         tick(.4)
@@ -251,6 +251,7 @@ def run(mock=False):
         app.state_history = ['IDLE']
         app.submit('procure clínicas em Campinas')
         app.terminal.hide()
+        tick(.2)  # Allow Windows to complete the focus handoff after hiding.
         foreground = native.api()[0].GetForegroundWindow()
         wait()
         tick(.5)

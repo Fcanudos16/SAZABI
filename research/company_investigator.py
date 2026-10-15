@@ -26,8 +26,11 @@ class CompanyInvestigator:
         self.errors: List[str] = []
 
     def is_fresh(self, profile: CompanyProfile) -> bool:
-        return bool(profile.investigated and profile.last_researched
-                    and hours_since(profile.last_researched) < self.cache_ttl_hours)
+        try:
+            return bool(profile.investigated and profile.last_researched
+                        and 0 <= hours_since(profile.last_researched) < self.cache_ttl_hours)
+        except (ValueError,TypeError,OverflowError):
+            return False
 
     def investigate(self, profile: CompanyProfile, refresh: bool = False,
                     stored: Optional[List[Observation]] = None) -> InvestigationResult:

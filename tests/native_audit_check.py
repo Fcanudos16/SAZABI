@@ -59,7 +59,7 @@ def run():
                 terminal.busy(False)
                 assert terminal.entry.get() == 'Nova prévia enquanto ocupado'
                 assert bridge.send.call_count == 1
-                assert app.terminal.last_skill_result['skill'] == 'search'
+                assert app.terminal.last_result and 'custo zero' in app.terminal.last_result[0]
             print('PASS: native /search duplicate guard, unconfigured state, no external call; /ai draft, send, reset and independent result.')
         finally:
             app.close()

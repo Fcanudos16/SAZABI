@@ -81,7 +81,7 @@ class SazabiNotificationController:
         label = tk.Label(window, text=text[:180], bg=BG, fg=FG, font=('Consolas', 9),
                          wraplength=240, padx=12, pady=9, justify='left')
         label.pack(padx=1, pady=1)
-        label.bind('<Button-1>', lambda event: self.dismiss())
+        label.bind('<Button-1>', lambda event: self.open_result())
         window.update_idletasks()
         self.w, self.h = window.winfo_reqwidth(), window.winfo_reqheight()
         self.x, self.y = native.place_near(self.app.x, self.app.y, self.app.atlas.width,
@@ -94,6 +94,10 @@ class SazabiNotificationController:
         native.show_passive(window, self.x, self.y, self.w, self.h, self.app.always_on_top.get())
         self.started, self.leaving = time.monotonic(), False
         self.tick()
+
+    def open_result(self):
+        self.clear()
+        self.app.get_terminal().show()
 
     def dismiss(self):
         if not self.window:

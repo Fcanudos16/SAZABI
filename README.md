@@ -4,6 +4,8 @@ Mascote de desktop com pesquisa legada pela **Tavily** e Search Skill com polít
 
 **O uso normal não carrega empresas fictícias.** A base começa vazia. Dados sintéticos existem apenas em `tests/`, para testes isolados; o antigo comando `--mock` foi removido.
 
+O desktop consolidado, recuperação de falhas, controles e testes da fase final estão em [FASE4_DESKTOP.md](FASE4_DESKTOP.md). A política do `/search` gratuito permanece explícita: não há adaptador de produção autorizado instalado; `/research` usa Tavily com créditos.
+
 ## Abrir e configurar
 
 O mascote requer **Windows e Python 3.9+ com Tcl/Tk**. Usa GDI+ e regiões nativas do Windows. O monitor do computador usa `psutil`; CLI e backend continuam independentes da camada visual.
@@ -26,6 +28,7 @@ No Windows, abra `iniciar_sazabi.cmd` para iniciar com `pythonw`, sem manter um 
 
 - **Arraste** o personagem para movê-lo. Um arraste não abre o terminal.
 - **Clique** para abrir ou fechar o terminal preto e verde, próximo ao personagem (até 620 × 440 px).
+- **Duplo clique** mantém o terminal aberto. **Último** recupera a última tentativa de pesquisa; cada comando tem uma saída atual separada.
 - **Escape, × ou clique fora** fecham apenas o terminal. A pesquisa continua em segundo plano.
 - **Clique direito** dá acesso a nova pesquisa, configuração, Monitor do sistema, Sempre no topo e Encerrar SAZABI.
 - Ao terminar, a pose muda e um pequeno aviso aparece por 5,5 segundos. Os resultados não são abertos automaticamente e o foco de outro aplicativo é preservado.
@@ -156,7 +159,7 @@ A caixa do SAZABI mantém 620 × 440 pixels (ou o limite da área útil da tela)
 
 - `/search empresas de tecnologia em São Paulo`: aciona a Search Skill de custo zero. Sem adaptador gratuito autorizado, retorna configuração ausente, mesmo que exista chave Tavily. Veja a seção de estado da implementação ao final.
 - **Nova pesquisa**: executa uma consulta `/search ...` já preparada uma única vez. Sem consulta, prepara `/search ` para digitação.
-- **Cancelar**: disponível durante a Search Skill. Interrompe entre etapas/requisições; a chamada HTTP atual ainda pode aguardar seu timeout. Dados já gravados são preservados e a execução fica marcada como cancelada.
+- **Cancelar**: disponível na Search Skill, pesquisa legada e investigação. Interrompe entre etapas/requisições; a chamada HTTP atual ainda pode aguardar seu timeout. Dados já gravados são preservados e a execução fica marcada como cancelada.
 - `/ai`: abre exclusivamente o **SAZABI AI TERMINAL**. `/ai texto` preenche um rascunho, sem enviá-lo automaticamente.
 - `/ollama Nome da empresa`: mantém a interpretação local opcional anterior. O antigo `/ai` do Ollama foi renomeado para liberar `/ai` para a LAYLA.
 

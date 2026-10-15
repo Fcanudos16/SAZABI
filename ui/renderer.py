@@ -1,9 +1,7 @@
 """Original poses plus temporary presentation layers; source files stay intact."""
 from collections import Counter
 import time
-import tkinter as tk
 from ui import native
-from ui.sprites import TRANSPARENT_COLOR
 from ui.behavior import ease
 from ui.presentation import transform_point
 
@@ -107,41 +105,20 @@ class SazabiRenderer:
 
 
 class SazabiTransitionController:
-    """At most one passive outgoing layer plus the incoming main window."""
+    """One original pose at a time; bounded opacity never hides the mascot."""
     def __init__(self, app, renderer):
-        self.app, self.renderer, self.ghost, self.job = app, renderer, None, None
+        self.app, self.renderer, self.job = app, renderer, None
 
     def finish(self):
         if self.job:
             self.app.root.after_cancel(self.job)
             self.job = None
-        if self.ghost:
-            self.ghost.destroy()
-            self.ghost = None
         self.app.root.attributes('-alpha', 1)
 
     def start(self, state, duration=None):
         if state == self.renderer.state:
             return
         self.finish()
-        image, region = self.renderer.current_frame()
-        window = self.ghost = tk.Toplevel(self.app.root)
-        window.withdraw()
-        window.overrideredirect(True)
-        window.configure(bg=TRANSPARENT_COLOR)
-        window.attributes('-transparentcolor', TRANSPARENT_COLOR)
-        window.attributes('-alpha', 0)
-        tk.Label(window, image=image, bg=TRANSPARENT_COLOR, bd=0, highlightthickness=0).pack()
-        window.update_idletasks()
-        native.no_activate(window)
-        native.click_through(window)
-        native.shape(window, region)
-        window.deiconify()
-        window.update_idletasks()
-        dx, dy = self.app.motion_offset
-        native.show_passive(window, self.app.x+dx, self.app.y+dy, self.app.atlas.width, self.app.atlas.height, self.app.always_on_top.get())
-        window.attributes('-alpha', 1)
-        self.app.root.attributes('-alpha', 0)
         self.renderer.pose(state)
         self.started = time.monotonic()
         key = 'important_transition_ms' if state in ('FOUND', 'RESPONDING') else 'transition_ms'
@@ -150,15 +127,9 @@ class SazabiTransitionController:
 
     def tick(self):
         self.job = None
-        if not self.ghost:
-            return
         progress = (time.monotonic()-self.started)/self.duration
         if progress >= 1:
             self.finish()
             return
-        alpha = ease(progress)
-        self.app.root.attributes('-alpha', alpha)
-        self.ghost.attributes('-alpha', 1-alpha)
-        dx, dy = self.app.motion_offset
-        native.position(self.ghost, self.app.x+dx, self.app.y+dy)
+        self.app.root.attributes('-alpha', .55+.45*ease(progress))
         self.job = self.app.root.after(33, self.tick)

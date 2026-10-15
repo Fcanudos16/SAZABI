@@ -21,7 +21,14 @@ def build_agent(config: Config, notifier: Optional[Notifier] = None,
         if not config.mock and config.search_api_key:
             from research.web_source import TavilySearch, WebSource
             sources = [WebSource(TavilySearch(config.search_api_key, config.search_limit))]
-    return SazabiAgent(
-        config=config, db=Database(config.database_path), finder=CompanyFinder(sources),
-        investigator=CompanyInvestigator(sources, config.cache_ttl_hours), detector=SignalDetector(),
-        analyzer=OpportunityAnalyzer(config.services), notifier=notifier or ConsoleNotifier())
+    db=Database(config.database_path)
+    try:
+        from database.recovery import recover
+        recover(db)
+        return SazabiAgent(
+            config=config, db=db, finder=CompanyFinder(sources),
+            investigator=CompanyInvestigator(sources, config.cache_ttl_hours), detector=SignalDetector(),
+            analyzer=OpportunityAnalyzer(config.services), notifier=notifier or ConsoleNotifier())
+    except BaseException:
+        db.close()
+        raise

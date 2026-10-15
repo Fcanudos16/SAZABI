@@ -1,5 +1,7 @@
 """Mascot-first desktop shell. All research runs on the existing worker thread."""
 import json
+import os
+import tempfile
 import re
 import time
 import tkinter as tk
@@ -9,7 +11,7 @@ from queue import Empty
 from core.bootstrap import build_agent
 from core.worker import AgentWorker
 from ui.sprites import SpriteAtlas, ASSETS, TRANSPARENT_COLOR
-from ui.terminal import ResultTerminal, BG, FG, FONT
+from ui.terminal import ResultTerminal, BG, FG, FONT, SHELL_BG, ACCENT
 from ui import native
 from ui.motion import offset
 from ui.behavior import SazabiAnimationController, SazabiDragController, validate_settings
@@ -43,6 +45,11 @@ class CompanionApp:
         self.state, self.notice, self.operation_failed = 'IDLE', None, False
         self.state_history = ['IDLE']
         self.always_on_top = tk.BooleanVar(root, True)
+        self.notifications_enabled=tk.BooleanVar(root,True)
+        self.last_click=0
+        self.area_checked=0
+        self.active_research=False
+        self.cancel_requested=False
         self.atlas = SpriteAtlas(root)
         self.animation_settings = validate_settings(json.loads((ASSETS / 'animation.json').read_text(encoding='utf-8')))
         self.animation = SazabiAnimationController(time.monotonic(), self.animation_settings)
@@ -154,6 +161,15 @@ class CompanionApp:
         self.life_job = None
         if self.closing:
             return
+        if not self._drag and time.monotonic()-self.area_checked>2:
+            self.area_checked=time.monotonic()
+            area=native.work_area(self.root)
+            if area!=self.area:
+                self.area=area
+                self._clamp(area)
+                native.position(self.root,self.x,self.y)
+                self.motion_offset=(0,0)
+                self._save()
         self.animation.sleep.update(time.monotonic(), self.busy or self.failed or self.state != 'IDLE'
                                     or bool(self._drag) or self.interaction.menu_open or bool(self.terminal and self.terminal.visible))
         self.refresh_visual()
@@ -201,6 +217,7 @@ class CompanionApp:
                 if not (-100000 < self.x < 100000 and -100000 < self.y < 100000):
                     self.x = self.y = 0
                 self.always_on_top.set(bool(data.get('topmost', True)))
+                self.notifications_enabled.set(bool(data.get('notifications',True)))
                 timeout = data.get('sleep_after_seconds', self.animation.sleep.timeout)
                 if isinstance(timeout, int) and 0 <= timeout <= 86400:
                     self.sleep_after.set(timeout)
@@ -210,14 +227,22 @@ class CompanionApp:
 
     def _save(self):
         if self.position_file:
+            temporary=None
             try:
                 self.position_file.parent.mkdir(parents=True, exist_ok=True)
-                temporary = self.position_file.with_suffix('.tmp')
-                temporary.write_text(json.dumps({'x': self.x, 'y': self.y, 'topmost': self.always_on_top.get(),
-                                                'sleep_after_seconds': self.sleep_after.get()}), encoding='utf-8')
+                with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=self.position_file.parent,
+                                                 prefix='.companion-',delete=False) as output:
+                    temporary=Path(output.name)
+                    json.dump({'x':self.x,'y':self.y,'topmost':self.always_on_top.get(),
+                               'notifications':self.notifications_enabled.get(),'sleep_after_seconds':self.sleep_after.get()},output)
+                    output.flush();os.fsync(output.fileno())
                 temporary.replace(self.position_file)
             except OSError:
                 self.notify('Não foi possível salvar a posição do mascote.')
+            finally:
+                if temporary and temporary.exists():
+                    try:temporary.unlink()
+                    except OSError:pass
 
     def _clamp(self, area):
         left, top, right, bottom = area
@@ -256,6 +281,7 @@ class CompanionApp:
         moved = self._drag[4]
         self._drag = None
         if moved:
+            self.last_click=0
             self.drag_controller.release(time.monotonic())
             self.refresh_visual()
             self.area = native.work_area(self.root)
@@ -265,7 +291,12 @@ class CompanionApp:
             native.show_passive(self.root, self.x, self.y+dy, self.atlas.width, self.atlas.height, self.always_on_top.get())
             self._save()
         else:
-            self.toggle_terminal()
+            now=time.monotonic()
+            if now-self.last_click < native.api()[0].GetDoubleClickTime()/1000:
+                self.get_terminal().show()
+            else:
+                self.toggle_terminal()
+            self.last_click=now
 
     def get_terminal(self):
         if self.terminal is None:
@@ -309,6 +340,29 @@ class CompanionApp:
             from ui.ai_terminal import AITerminal
             self.ai_terminal = AITerminal(self)
         self.ai_terminal.show(draft)
+
+    def show_last_result(self):
+        terminal=self.get_terminal()
+        if self.busy:
+            terminal.show()
+        elif not terminal.show_last_result():
+            terminal.show()
+            self.submit('/results')
+
+    def open_profile(self):
+        self.get_terminal().show()
+        self.submit('/profile')
+
+    def cancel_search(self):
+        if self.busy and self.active_research:
+            self.cancel_requested=True
+            self.worker.cancel()
+            self.get_terminal().status.set('Cancelamento solicitado; aguardando a operação externa encerrar…')
+            self.get_terminal().cancel.configure(state='disabled')
+
+    def notifications_changed(self):
+        if not self.notifications_enabled.get(): self.notifications.clear()
+        self._save()
 
     def open_settings(self):
         if self.wake_gate(self.open_settings):
@@ -356,8 +410,12 @@ class CompanionApp:
         menu.add_command(label='Nova pesquisa', command=lambda: self.menu_action(self.open_search))
         menu.add_command(label='Configuração · Tavily / Ollama', command=lambda: self.menu_action(self.open_settings))
         menu.add_command(label='Monitor do sistema', command=lambda: self.menu_action(self.open_system_monitor))
+        menu.add_command(label='Última pesquisa', command=lambda: self.menu_action(self.show_last_result))
+        menu.add_command(label='Perfil comercial', command=lambda: self.menu_action(self.open_profile))
+        menu.add_command(label='Terminal LAYLA',command=lambda:self.menu_action(self.open_ai))
         menu.add_separator()
         menu.add_checkbutton(label='Sempre no topo', variable=self.always_on_top, command=self.topmost_changed)
+        menu.add_checkbutton(label='Notificações',variable=self.notifications_enabled,command=self.notifications_changed)
         sleep_menu = tk.Menu(menu, tearoff=False, bg=BG, fg=FG, font=FONT)
         for label, seconds in [('Nunca', 0), ('1 minuto', 60), ('2 minutos', 120), ('5 minutos', 300)]:
             sleep_menu.add_radiobutton(label=label, value=seconds, variable=self.sleep_after,
@@ -400,15 +458,13 @@ class CompanionApp:
         self.state_history.append(state)
         self.state_history = self.state_history[-100:]
         self.refresh_visual()
-        if self.terminal:
-            self.terminal.status.set(state + (' · tarefa em andamento' if self.busy else ' · pronto'))
 
     def set_busy(self, value):
         self.busy = value
         self.touch()
         if self.terminal:
             self.terminal.busy(value or self.failed or self.closing)
-            self.terminal.status.set(self.state + (' · tarefa em andamento' if value else ' · resposta disponível'))
+            if value: self.terminal.status.set('Executando…')
         if self.preferences and self.preferences.window.winfo_exists():
             self.preferences.busy(value)
 
@@ -438,7 +494,10 @@ class CompanionApp:
         if text.lower() in ('sair', '/exit', '/quit', '/sair'):
             self.close()
             return
-        terminal.append('> ' + text, 'user')
+        terminal.begin(text)
+        from core.command_router import route
+        self.active_research=route(text).name in ('search','investigate')
+        self.cancel_requested=False
         self.notice, self.operation_failed = None, False
         if self.idle_job:
             self.root.after_cancel(self.idle_job)
@@ -448,7 +507,10 @@ class CompanionApp:
         self.set_state('ANALYZING')
         if not self.worker.submit(text):
             self.set_busy(False)
+            self.set_state('IDLE')
             terminal.status.set('Uma execução já está em andamento.')
+        elif self.active_research:
+            terminal.cancel.configure(state='normal')
 
     def queue_request(self, request):
         if self.wake_gate(lambda: self.queue_request(request)):
@@ -456,6 +518,8 @@ class CompanionApp:
         self.touch()
         if self.busy or self.failed or self.closing:
             return
+        self.active_research=False
+        self.cancel_requested=False
         if self.idle_job:
             self.root.after_cancel(self.idle_job)
             self.idle_job = None
@@ -464,25 +528,29 @@ class CompanionApp:
         self.worker.commands.put(request)
 
     def notify(self, text):
-        self.notifications.show(text)
+        if self.notifications_enabled.get(): self.notifications.show(text)
 
     def dismiss_bubble(self):
         self.notifications.dismiss()
 
     def activity(self, data):
         kind = data['kind']
+        if kind=='SEARCH_STARTED':
+            self.active_research=True
+            self.get_terminal().cancel.configure(state='disabled' if self.cancel_requested else 'normal')
         if kind == 'SKILL_STATE':
             labels = {'idle': 'Pronto', 'queued': 'Preparando pesquisa…', 'running': 'Executando Search Skill…',
                       'processing': 'Analisando resultados…', 'completed': 'Pesquisa concluída.',
                       'failed': 'Pesquisa não concluída.', 'cancelled': 'Pesquisa cancelada.'}
             terminal = self.get_terminal()
-            terminal.status.set(labels.get(data['status'], data['status']))
-            terminal.cancel.configure(state='normal' if data['status'] in ('queued', 'running', 'processing') else 'disabled')
+            if not self.cancel_requested: terminal.status.set(labels.get(data['status'], data['status']))
+            terminal.cancel.configure(state='normal' if not self.cancel_requested and data['status'] in ('queued', 'running', 'processing') else 'disabled')
             return
         if kind == 'SEARCH_RESULT_FOUND':
             self.found_until = time.monotonic() + .45
         if kind in STATE_EVENTS:
-            self.set_state(STATE_EVENTS[kind])
+            if kind!='RESPONSE_READY' or not self.operation_failed:
+                self.set_state(STATE_EVENTS[kind])
         message = data.get('message')
         if message:
             self.get_terminal().append('· ' + message, 'error' if kind == 'TASK_ERROR' else 'event')
@@ -496,6 +564,8 @@ class CompanionApp:
         try:
             while True:
                 kind, value = self.worker.events.get_nowait()
+                if self.closing and kind!='closed':
+                    continue
                 if kind == 'ready':
                     self.ready = True
                     self.set_busy(False)
@@ -506,16 +576,25 @@ class CompanionApp:
                     self.set_busy(False)
                     if value.get('data', {}).get('action') == 'open_ai':
                         self.set_state('IDLE')
+                        terminal=self.get_terminal()
+                        terminal.last_skill_result=value
+                        terminal.status.set('Terminal LAYLA aberto · prévia não enviada')
+                        terminal.append('Revise a prévia no terminal LAYLA antes de enviar. A integração pode usar serviços pagos.')
                         self.open_ai(value['data'].get('draft', ''))
                     else:
                         self.get_terminal().render_skill(value)
                         self.operation_failed = not value.get('success', False)
-                        self.notify(value.get('message', '')[:180])
+                        if self.operation_failed: self.set_state('IDLE')
+                        if self.active_research: self.get_terminal().remember_result()
+                        self.notify(f"Execução #{self.get_terminal().execution_number} · {self.get_terminal().status.get()}. Clique para consultar.")
                         self.idle_job = self.root.after(1200, self.to_idle)
                 elif kind == 'reply':
                     self.get_terminal().append(value + '\n')
                     self.set_busy(False)
-                    self.notify(self.notice or 'Resposta disponível. Clique para consultar.')
+                    self.get_terminal().status.set('Não concluído' if self.operation_failed else 'Resposta disponível')
+                    self.get_terminal().output.yview_moveto(0)
+                    if self.active_research: self.get_terminal().remember_result()
+                    self.notify(f"Execução #{self.get_terminal().execution_number} · "+(self.notice or 'Resposta disponível. Clique para consultar.'))
                     self.idle_job = self.root.after(1200, self.to_idle)
                 elif kind in ('connected', 'connection_error', 'ollama_models', 'ollama_ready', 'ollama_error'):
                     self.set_busy(False)
@@ -556,6 +635,9 @@ class CompanionApp:
             return
         self._save()
         self.closing = True
+        for attr in ('idle_job','response_job','wake_job','menu_action_job'):
+            job=getattr(self,attr)
+            if job: self.root.after_cancel(job); setattr(self,attr,None)
         self.interaction.close()
         if self.ai_terminal:
             self.ai_terminal.close()

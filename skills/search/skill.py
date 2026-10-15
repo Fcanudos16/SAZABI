@@ -70,9 +70,12 @@ class SearchSkill:
             if run is None or (previous and run.id == previous.id):
                 if agent._pending and agent._pending.get('type') == 'region':
                     agent._pending.update(skill_name=self.name, skill_query=query)
-                self.state = 'idle'
-                context.state('idle')
-                return SkillResult(False, self.name, 'needs_input', message=message)
+                    self.state = 'idle'
+                    context.state('idle')
+                    return SkillResult(False, self.name, 'needs_input', message=message)
+                self.state='failed'
+                context.state('failed')
+                return SkillResult(False,self.name,'failed',message=message)
             companies = agent.companies.get_many(agent.runs.company_ids(run.id))
             data = dict(run_id=run.id, companies=[dict(id=p.id, name=p.name, segment=p.segment,
                 location=p.location, website=p.website) for p in companies])
@@ -88,6 +91,8 @@ class SearchSkill:
             agent.emit('TASK_ERROR', message=message)
             return SkillResult(False, self.name, error.status, message=message, error=message)
         except Exception:
+            import logging
+            logging.getLogger('sazabi.search').exception('Falha na execução da Search Skill')
             self.state = 'failed'
             context.state('failed')
             agent.emit('TASK_ERROR', message='Search Skill não conseguiu concluir a pesquisa.')

@@ -87,7 +87,7 @@ class AgentWorker:
                     request = command if isinstance(command, CommandRequest) else None
                     reply = agent.handle(request.text if request else command,
                                          cancelled=request.cancelled if request else None)
-                    if self.progress:
+                    if self.progress and not (agent.last_skill_result and not agent.last_skill_result.success):
                         self.events.put(('activity', {'kind': 'RESPONSE_READY'}))
                     if request:
                         with self._submission_lock:

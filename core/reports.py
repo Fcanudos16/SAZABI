@@ -144,7 +144,7 @@ def format_history(runs: Sequence[ResearchRun]) -> str:
     blocks = []
     for r in runs:
         blocks.append("\n".join([
-            f"{fmt_date(r.started_at)}", f"Pesquisa: {r.query}",
+            f"Pesquisa #{r.id} · {fmt_date(r.started_at)}", f"Pesquisa: {r.query}",
             'Situação: ' + {'completed': 'concluída', 'partial': 'parcial', 'failed': 'falhou', 'cancelled': 'cancelada', 'running': 'sem conclusão', 'legacy': 'registro anterior'}.get(r.status, r.status) + (' — ' + r.error_message if r.error_message else ''),
             f"Encontradas: {r.found} | Duplicadas: {r.duplicates} | Novas: {r.new_count} | Já conhecidas: {r.known_count}",
             f"Investigadas: {r.investigated} | Sinais: {r.signals_count} | Oportunidades potenciais: {r.opportunities}"]))
@@ -186,7 +186,7 @@ Consultar
   "quais empresas parecem interessantes?"       /interesting
   "o que eu pesquisei ontem?"                   /history [hoje|ontem]
 Gerenciar leads locais
-  /leads [texto] [status=new] [salvos] [arquivados] [pagina=1]
+  /leads [texto] [status=new] [min_score=70] [categoria=high] [ordem=score] [salvos] [arquivados] [pagina=1]
   /lead ID                                     detalhes, fontes e histórico comercial
   /stage ID new|qualified|contact_pending|contacted|negotiating|converted|discarded
   /note ID texto                               observações editáveis (- para limpar)

@@ -31,7 +31,7 @@ class LeadCommands:
             return SkillResult(False,'leads','failed','Não foi possível gravar a exportação. Confira espaço e permissão da pasta; tente novamente.')
 
     def usage(self,name):
-        return {'leads':'Use /leads [texto] [status=new] [cidade="São Paulo"] [segmento=clínica] [salvos] [arquivados] [pagina=1].',
+        return {'leads':'Use /leads [texto] [status=new] [cidade="São Paulo"] [segmento=clínica] [min_score=70] [categoria=high] [ordem=score] [salvos] [arquivados] [pagina=1].',
                 'lead':'Use /lead ID (ID único exibido em /leads).',
                 'stage':'Use /stage ID ' + '|'.join(STAGES),
                 'note':'Use /note ID texto; use - para limpar.',
@@ -50,6 +50,9 @@ class LeadCommands:
                     if key=='pagina':
                         if not value.isdigit() or int(value)<1: raise ValueError
                         options['offset']=(int(value)-1)*50
+                    elif key=='min_score': options['min_score']=int(value)
+                    elif key=='categoria': options['category']=value
+                    elif key=='ordem': options['order']=value
                     elif key in ('status','cidade','segmento'):
                         options[{'status':'stage','cidade':'city','segmento':'segment'}[key]]=value
                     else: raise ValueError

@@ -34,7 +34,11 @@ class LeadRepository:
     def events(self, identity):
         return [dict(r) for r in self.db.query('SELECT kind,detail,created_at FROM lead_events WHERE company_id=? ORDER BY id', (identity,))]
 
-    def list(self, query='', stage=None, city=None, segment=None, archived=False, saved=False, offset=0):
+    def list(self, query='', stage=None, city=None, segment=None, archived=False, saved=False, offset=0,
+             min_score=None, category=None, order='name'):
+        if min_score is not None and (type(min_score) is not int or not 0<=min_score<=100): raise ValueError('min_score: 0 a 100.')
+        if category is not None and category not in ('high','moderate','low','insufficient'): raise ValueError('Categoria inválida.')
+        if order not in ('name','score'): raise ValueError('Ordem inválida.')
         clauses, args = ['archived=?'], [int(archived)]
         if stage:
             if stage not in STAGES: raise ValueError('Estágio inválido: ' + ', '.join(STAGES))
@@ -49,6 +53,9 @@ class LeadRepository:
             '(SELECT category FROM lead_evaluations e WHERE e.company_id=companies.id ORDER BY e.id DESC LIMIT 1) AS qualification_category '
             'FROM companies WHERE ' + ' AND '.join(clauses) + ' ORDER BY name,id', args)]
         if segment: rows = [r for r in rows if normalize_name(segment) in normalize_name(r['segment'])]
+        if min_score is not None: rows=[r for r in rows if r['qualification_score'] is not None and r['qualification_score']>=min_score]
+        if category: rows=[r for r in rows if r['qualification_category']==category]
+        if order=='score': rows.sort(key=lambda r: (-(r['qualification_score'] if r['qualification_score'] is not None else -1),r['name'],r['id']))
         return rows[offset:offset+50]
 
     def stage(self, identity, value):

@@ -27,7 +27,7 @@ O canvas mede 190 × 220 px. A janela recebe uma região Win32 que exclui o fund
 
 O mapeamento é configurável em `assets/sazabi/states.json`. O agente emite eventos; a interface não usa cronômetros para fingir etapas de pesquisa. FOUND permanece brevemente visível depois do resultado real, seguido de RESPONDING e retorno a IDLE. Sem resultado não há FOUND. Mensagens distinguem empresas identificadas de páginas pendentes e falhas.
 
-As expressões usam crossfade com easing entre a janela principal e uma única camada anterior, sem ciclar a prancha como frames. A transição normal dura 350 ms; pulo usa 200 ms e pouso 600 ms. Estados que usam a mesma pose não geram crossfade redundante. Um evento novo substitui a transição em andamento e descarta a camada anterior.
+As expressões mostram uma única pose por vez, com entrada suave por opacidade de 55% a 100%, sem janela sobreposta e sem ciclar a prancha como frames. A transição normal dura 350 ms; pulo usa 200 ms e pouso 600 ms. Estados que usam a mesma pose não reiniciam a transição. Um evento novo substitui a transição em andamento; a imagem nunca fica totalmente invisível.
 
 O repouso combina respiração sugerida por deslocamento de aproximadamente um pixel, oscilação lateral e variação controlada de duração, amplitude e direção. Durante trabalho, o conjunto se desloca suavemente para a esquerda, centro, direita e centro, com pausas aleatórias de 1–2 segundos e movimentos de 900 ms. O arquivo da cabeça não é recortado ou reconstruído. Resultados recebem uma pequena reação vertical.
 
@@ -56,6 +56,7 @@ Piscadas, transições e bolhas continuam ativas no perfil suave. O temporizador
 ## Interação
 
 - Clique esquerdo acordado: alterna o terminal próximo ao personagem; dormindo, apenas acorda.
+- Duplo clique acordado mantém o acesso ao terminal aberto, sem alternar duas vezes para fechado.
 - Movimento superior a seis pixels durante o clique: arrasta; não abre o terminal.
 - Clique direito: terminal, nova pesquisa, configuração, monitor do sistema, sempre no topo e encerrar.
 - O popup é uma janela Tkinter nativa não modal, para não bloquear timers no loop de menu do Windows. Mantém todas as opções existentes, submenu de sono, teclado, Escape e fechamento ao perder foco. CONFIGURATION permanece enquanto estiver aberto; hover/seleção de Encerrar ativa EXIT_HOVER sem encerrar. Sair dessa opção restaura CONFIGURATION. Abrir/fechar terminal considera a visibilidade anterior à abertura do menu.
@@ -70,7 +71,7 @@ Preto `#080d0a`, texto verde `#8fdfa7`, borda `#254331`, informação secundári
 
 A barra lateral de rolagem usa trilho preto e controle verde escuro, com realce verde ao passar o cursor e pressionar.
 
-Clique novamente no mascote, Escape, × ou perda de foco ocultam o terminal. Pesquisa e memória continuam ativas. A conclusão não abre o terminal: apenas atualiza a pose e mostra um balão de até 240 px de texto por 5,5 segundos. Entrada com fade e deslocamento de cinco pixels em 250 ms; saída com fade. Clicar no balão o dispensa.
+Clique novamente no mascote, Escape, × ou perda de foco ocultam o terminal. Pesquisa e memória continuam ativas. A conclusão não abre o terminal: apenas atualiza a pose e, se as notificações estiverem habilitadas, mostra um balão de até 240 px de texto por 5,5 segundos. Entrada com fade e deslocamento de cinco pixels em 250 ms; saída com fade. Clicar no balão abre a saída atual correspondente. Cada comando inicia uma seção numerada; Último recupera a última tentativa de pesquisa da sessão. Controles ficam em duas linhas para acomodar fontes maiores.
 
 Configuração é uma janela opcional separada, acessível pelo menu do mascote. Mantém chave Tavily mascarada e seleção de Ollama local. Não substitui a experiência principal.
 
@@ -85,7 +86,7 @@ Configuração é uma janela opcional separada, acessível pelo menu do mascote.
 | `ui/interaction.py` | SazabiInteractionController: popup não modal, hover, teclado e fechamento |
 | `ui/presentation.py` | inclinação, respiração por escala e transformações uniformes das poses originais |
 | `ui/behavior.py` | SazabiDragController e SazabiWorkController: pulo, pouso e movimento lateral |
-| `ui/renderer.py` | SazabiRenderer, pálpebras por composição e SazabiTransitionController com no máximo duas expressões |
+| `ui/renderer.py` | SazabiRenderer, pálpebras por composição e SazabiTransitionController com uma expressão por quadro |
 | `ui/effects.py` | bolhas de sono e SazabiNotificationController com timers canceláveis |
 | `ui/sprites.py` | leitura original, recortes e máscaras, sem regravar a arte |
 | `ui/native.py` | regiões, não ativação, posição e área útil no Windows |
@@ -100,7 +101,7 @@ O terminal mantém até 2.500 linhas em memória para limitar consumo; as pesqui
 
 `tests/native_desktop_check.py` cobre a janela real do Windows, máscaras e olhos, seis poses, arraste/clique, foco, terminal limitado, pesquisa em segundo plano, configuração e encerramento. Os testes sintéticos não usam o banco de produção. A suíte verifica também o hash da arte, preservação dos pixels, posição em coordenadas negativas e eventos sem resultados inventados.
 
-Também verifica crossfade, piscadas, sono sem sobrepor olhos, bloqueio de clique/arraste durante sono, comando adiado até despertar, retorno ao trabalho após pouso, hover de encerramento sem encerrar, popup e submenu, limite de bolhas, notificação e opção Nunca. A suíte pura simula 12 horas de relógio de comportamento; isso não equivale a um teste de 12 horas de CPU/GPU, memória ou renderização no desktop. Não foi realizado benchmark prolongado no equipamento do usuário.
+Também verifica transições com uma única pose, piscadas, sono sem sobrepor olhos, bloqueio de clique/arraste durante sono, comando adiado até despertar, retorno ao trabalho após pouso, hover de encerramento sem encerrar, popup e submenu, limite de bolhas, notificação e opção Nunca. A suíte pura simula 12 horas de relógio de comportamento; isso não equivale a um teste de 12 horas de CPU/GPU, memória ou renderização no desktop. Não foi realizado benchmark prolongado no equipamento do usuário.
 
 O mascote requer Windows. O backend/CLI permanece portátil. O posicionamento foi testado matematicamente em áreas de múltiplos monitores, mas escalas DPI mistas e monitores físicos adicionais exigem teste no equipamento correspondente. Não houve certificação de acessibilidade por leitor de tela.
 
@@ -112,6 +113,6 @@ A máscara externa também é aplicada ao bitmap de apresentação por uma cor t
 
 ## Interação Slash
 
-O terminal principal mantém sua geometria original. As sugestões de `/search` e `/ai` aparecem como sobreposição local, sem alterar o campo de entrada. `Nova pesquisa` aproveita uma consulta preparada; uma trava no worker impede submissões duplicadas. O botão Cancelar atua somente durante a Search Skill.
+O terminal principal mantém sua geometria original. As sugestões slash aparecem como sobreposição local, sem alterar o campo de entrada. `Nova pesquisa` aproveita uma consulta preparada; uma trava no worker impede submissões duplicadas. O botão Cancelar atua durante a Search Skill, pesquisa legada e investigação, de forma cooperativa. Resultados e limitações da validação final estão em `FASE4_DESKTOP.md`.
 
 `/ai` abre outra janela nativa, preta e verde, criada apenas quando solicitada. Histórico e processamento da LAYLA são independentes da pesquisa; sessão, CSRF e transporte ficam em `integrations/layla`. A UI recebe somente resultados públicos. Ollama permanece acessível por `/ollama`.

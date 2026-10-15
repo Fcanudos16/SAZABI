@@ -64,6 +64,7 @@ class SazabiAgent:
         self._pending: Optional[Dict] = None      # pergunta aguardando resposta (região / confirmação)
         self.event_sink = None
         self.skill_context = None
+        self.execution_context = None
         self.last_skill_result = None
         from skills.registry import SkillRegistry
         from skills.search.skill import SearchSkill
@@ -73,6 +74,8 @@ class SazabiAgent:
         self.command_router = CommandRouter(self.skills)
 
     def emit(self, kind, **data):
+        if self.execution_context and not self.skill_context and kind in ('SEARCH_STARTED','SEARCH_PROCESSING','TASK_PROCESSING'):
+            self.execution_context.checkpoint()
         if self.skill_context and kind not in ('SKILL_STATE', 'TASK_ERROR'):
             self.skill_context.checkpoint()
             if kind == 'SEARCH_PROCESSING' and self.event_sink:
@@ -83,8 +86,23 @@ class SazabiAgent:
     # ------------------------------------------------------------------ entrada
     def handle(self, text: str, cancelled=None) -> str:
         import sqlite3
+        from skills.base import SkillContext, SkillResult, ExecutionStopped
+        from utils.http_client import HttpClient
+        self.execution_context=SkillContext(self)
+        if cancelled is not None: self.execution_context.cancelled=cancelled
+        clients={id(c):c for source in self.finder.sources+self.investigator.sources
+                 for c in (getattr(source,'client',None),getattr(getattr(source,'provider',None),'client',None))
+                 if isinstance(c,HttpClient)}
+        callbacks=[(c,c.checkpoint) for c in clients.values()]
+        for client,_ in callbacks: client.checkpoint=self.execution_context.checkpoint
         try:
             return self._handle(text, cancelled)
+        except ExecutionStopped as error:
+            self._pending=None
+            message='Pesquisa cancelada; dados já confirmados preservados.' if error.status=='cancelled' else 'Tempo limite atingido; dados já confirmados preservados.'
+            self.last_skill_result=SkillResult(False,'research',error.status,message)
+            self.emit('TASK_ERROR',message=message)
+            return message
         except sqlite3.Error:
             self._pending = None
             message = 'Banco local indisponível, bloqueado ou sem espaço. A operação não pôde ser concluída; tente novamente.'
@@ -92,6 +110,9 @@ class SazabiAgent:
             self.last_skill_result = SkillResult(False, 'database', 'failed', message)
             self.emit('TASK_ERROR', message=message)
             return message
+        finally:
+            for client,callback in callbacks: client.checkpoint=callback
+            self.execution_context=None
 
     def _handle(self, text: str, cancelled=None) -> str:
         import re
@@ -122,7 +143,9 @@ class SazabiAgent:
         self.memory.log_turn("user", text)
         try:
             reply = self._dispatch(route(text), text)
-        except Exception:
+        except Exception as error:
+            from skills.base import ExecutionStopped
+            if isinstance(error,ExecutionStopped): raise
             log.exception("Erro ao processar mensagem")
             self.emit('TASK_ERROR', message='Não consegui concluir o pedido.')
             reply = "Ocorreu um erro interno ao processar o pedido. O detalhe foi registrado no log."
@@ -224,6 +247,17 @@ class SazabiAgent:
         return self._run_search(criteria)
 
     def _run_search(self, criteria: SearchCriteria) -> str:
+        from database.recovery import research_lock, recover_locked, ResearchBusy
+        try:
+            with research_lock(self.db):
+                recover_locked(self.db)
+                return self._run_search_locked(criteria)
+        except ResearchBusy:
+            message='Pesquisa não iniciada: outra instância está pesquisando ou o bloqueio local está indisponível. Confira o acesso à pasta do banco.'
+            self.emit('TASK_ERROR',message=message)
+            return message
+
+    def _run_search_locked(self, criteria: SearchCriteria) -> str:
         if not self.finder.sources:
             self.emit('TASK_ERROR', message='Configure sua chave Tavily para pesquisar.')
             return 'Pesquisa não iniciada. Abra Configuração e conecte sua chave Tavily, ou preencha SEARCH_API_KEY no .env.'
@@ -261,6 +295,8 @@ class SazabiAgent:
 
         ranked: List[Tuple[CompanyProfile, Optional[str], int]] = []
         for candidate in unique:
+            context=self.skill_context or self.execution_context
+            if context: context.checkpoint()
             with self.db.transaction():
                 existing = find_existing(candidate, self.companies.candidates_for(candidate))
                 if existing:
@@ -290,6 +326,8 @@ class SazabiAgent:
                     run.opportunities += 1
                 ranked.append((profile, best, len(outcome.signals)))
 
+        context=self.skill_context or self.execution_context
+        if context: context.checkpoint()
         ranked.sort(key=lambda e: (-opportunity_score(e[0].signals), -(rank(e[1]) if e[1] else 0), e[0].name))
         errors = self.finder.errors + self.investigator.errors
         run.status = 'failed' if self.finder.errors and not raws and not self.finder.hits else 'partial' if errors else 'completed'
@@ -351,6 +389,8 @@ class SazabiAgent:
         self.emit('TASK_PROCESSING' if not refresh and self.investigator.is_fresh(profile) else 'SEARCH_STARTED',
                   message='Consultando evidências de ' + profile.name + '.')
         result = self.investigator.investigate(profile, refresh=refresh, stored=stored)
+        context=self.skill_context or self.execution_context
+        if context: context.checkpoint()
         if result.from_cache or result.failed:
             profile.observations = result.observations
             profile.signals = self.signals.list_for_company(profile.id)
@@ -398,6 +438,8 @@ class SazabiAgent:
         if allow_lookup:
             self.emit('SEARCH_STARTED', message='Identificando a empresa nas fontes.')
             raw = self.finder.lookup(target)
+            context=self.skill_context or self.execution_context
+            if context: context.checkpoint()
             if raw:
                 profile = build_profile(raw)
                 existing = find_existing(profile, self.companies.candidates_for(profile))
@@ -514,7 +556,8 @@ class SazabiAgent:
             self.memory.set_last_company(profiles[0].id) if len(profiles) == 1 else None
         hits = [dict(hit) for run in runs for hit in self.db.query('SELECT * FROM discovery_results WHERE run_id=?', (run.id,))]
         failures = '\n'.join(r.error_message for r in runs if r.error_message)
-        return reports.format_company_list(f"Empresas encontradas {label}:", self._entries(profiles)) + reports.format_discovery(hits) + ('\nFalhas registradas: ' + failures if failures else '')
+        run_labels='\n'.join(f"Pesquisa #{r.id} · {r.status} · coleta iniciada em {r.started_at}" for r in runs)
+        return run_labels+'\n'+reports.format_company_list(f"Empresas encontradas {label}:", self._entries(profiles)) + reports.format_discovery(hits) + ('\nFalhas registradas: ' + failures if failures else '')
 
     def _cmd_interesting(self) -> str:
         pairs = self.hypotheses.companies_with_min_level("moderado")

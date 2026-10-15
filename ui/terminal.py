@@ -5,6 +5,7 @@ from ui import native
 
 BG, FG, MUTED, BORDER = '#080d0a', '#8fdfa7', '#72937b', '#254331'
 FONT = ('Consolas', 10)
+SHELL_BG, ACCENT = '#100b0d', '#702638'
 
 
 def button(parent, text, command):
@@ -27,15 +28,17 @@ class ResultTerminal:
         body.pack(fill='both', expand=True, padx=1, pady=1)
         header = tk.Frame(body, bg=BG)
         header.pack(fill='x', padx=12, pady=(8, 4))
-        tk.Label(header, text='SAZABI / TERMINAL', bg=BG, fg=FG, font=('Consolas', 11, 'bold')).pack(side='left')
+        self.heading=tk.StringVar(value='SAZABI / TERMINAL')
+        tk.Label(header, textvariable=self.heading, bg=BG, fg=FG, font=('Consolas', 11, 'bold')).pack(side='left')
         button(header, '×', self.hide).pack(side='right')
         actions = tk.Frame(body, bg=BG)
         actions.pack(fill='x', padx=12, pady=(0, 6))
-        for text, command in [('Leads', '/leads'), ('Resultados', '/results'), ('Histórico', '/history'), ('Ajuda', '/help')]:
-            button(actions, text, lambda value=command: app.submit(value)).pack(side='left', padx=(0, 5))
-        button(actions, 'Nova pesquisa', app.open_search).pack(side='left', padx=5)
-        self.cancel = button(actions, 'Cancelar', app.worker.cancel)
-        self.cancel.pack(side='left')
+        for column,(text, command) in enumerate([('Leads', '/leads'), ('Histórico', '/history'), ('Ajuda', '/help')]):
+            button(actions, text, lambda value=command: app.submit(value)).grid(row=0,column=column,sticky='w',padx=(0,5))
+        button(actions, 'Último', app.show_last_result).grid(row=1,column=0,sticky='w')
+        button(actions, 'Nova pesquisa', app.open_search).grid(row=1,column=1,sticky='w')
+        self.cancel = button(actions, 'Cancelar', app.cancel_search)
+        self.cancel.grid(row=1,column=2,sticky='w')
         self.cancel.configure(state='disabled')
         self.status = tk.StringVar(value='IDLE · clique direito no mascote para configurar')
         tk.Label(body, textvariable=self.status, anchor='w', bg=BG, fg=MUTED, font=('Consolas', 9)).pack(side='bottom', fill='x', padx=12, pady=8)
@@ -75,6 +78,9 @@ class ResultTerminal:
         from ui.autocomplete import SlashAutocomplete
         self.autocomplete = SlashAutocomplete(self)
         self.last_skill_result = None
+        self.execution_number=0
+        self.current_query=''
+        self.last_result=None
         self.append('Clique direito no mascote → Configuração para Tavily/Ollama.\n/search exige uma fonte gratuita; /research usa Tavily (créditos).\n/ai abre a LAYLA; o texto é um rascunho até você enviar.\n', 'event')
 
     def enter(self, event=None):
@@ -85,7 +91,10 @@ class ResultTerminal:
 
     def render_skill(self, result):
         self.last_skill_result = result
-        self.status.set(result['skill'] + ' · ' + result['status'])
+        labels={'completed':'Concluído','partial':'Parcial — confira limitações','failed':'Não concluído',
+                'cancelled':'Cancelado','unconfigured':'Configuração necessária','needs_input':'Aguardando informação',
+                'needs_confirmation':'Aguardando confirmação','ready':'Pronto'}
+        self.status.set(labels.get(result['status'],result['status']))
         self.append(result.get('message') or result.get('error') or 'Sem resposta.',
                     'result' if result.get('success') else 'error')
         # Structured data is optional; render it without knowing the provider.
@@ -93,6 +102,31 @@ class ResultTerminal:
             for company in result.get('data', {}).get('companies', []):
                 self.append('\n'.join(str(company.get(key) or 'Não informado')
                             for key in ('name', 'segment', 'location', 'website')))
+        self.output.yview_moveto(0)
+
+    def begin(self, query):
+        self.execution_number+=1
+        self.current_query=query
+        self.heading.set(f'SAZABI / EXECUÇÃO #{self.execution_number}')
+        self.output.configure(state='normal')
+        self.output.delete('1.0','end')
+        self.output.configure(state='disabled')
+        self.last_skill_result=None
+        self.append(f'Execução local #{self.execution_number} · {query}', 'user')
+
+    def remember_result(self):
+        self.last_result=(self.output.get('1.0','end')[-200000:],self.status.get(),self.heading.get())
+
+    def show_last_result(self):
+        if self.last_result is None: return False
+        text,status,heading=self.last_result
+        self.output.configure(state='normal'); self.output.delete('1.0','end'); self.output.configure(state='disabled')
+        self.append(text)
+        self.status.set('Última pesquisa · '+status)
+        self.heading.set(heading)
+        self.output.yview_moveto(0)
+        self.show()
+        return True
 
     def _focus_out(self, event):
         if self.visible:
@@ -132,7 +166,7 @@ class ResultTerminal:
         self.window.withdraw()
 
     def busy(self, busy):
-        self.cancel.configure(state='disabled')
+        self.cancel.configure(state='normal' if busy and self.app.active_research and not (self.app.closing or self.app.failed or self.app.cancel_requested) else 'disabled')
         if busy:
             self.autocomplete.hide()
         self.entry.configure(state='disabled' if busy else 'normal')
