@@ -82,6 +82,18 @@ class SazabiAgent:
 
     # ------------------------------------------------------------------ entrada
     def handle(self, text: str, cancelled=None) -> str:
+        import sqlite3
+        try:
+            return self._handle(text, cancelled)
+        except sqlite3.Error:
+            self._pending = None
+            message = 'Banco local indisponível, bloqueado ou sem espaço. A operação não pôde ser concluída; tente novamente.'
+            from skills.base import SkillResult
+            self.last_skill_result = SkillResult(False, 'database', 'failed', message)
+            self.emit('TASK_ERROR', message=message)
+            return message
+
+    def _handle(self, text: str, cancelled=None) -> str:
         import re
         from core.commands.parser import parse
         from skills.base import SkillContext
@@ -180,6 +192,15 @@ class SazabiAgent:
                 return self._run_search(criteria)
             self._pending = None
             return None
+        if pending["type"] == "archive":
+            self._pending = None
+            if n in YES:
+                from database.leads import LeadRepository
+                LeadRepository(self.db).archive(pending['company_id'])
+                return 'Lead arquivado; histórico preservado. Use /restore ID para restaurar.'
+            if n in NO:
+                return 'Ok, nada foi arquivado.'
+            return None
         if pending["type"] == "forget":
             self._pending = None
             if n in YES:
@@ -215,6 +236,9 @@ class SazabiAgent:
             run.error_message = ('Pesquisa cancelada; resultados parciais preservados.' if run.status == 'cancelled' else
                                  'Tempo limite atingido; resultados parciais preservados.' if isinstance(failure, ExecutionStopped) else
                                  'Pesquisa interrompida por erro interno; resultados podem estar incompletos.')
+            counts = self.db.query_one('SELECT COUNT(*) AS total, COALESCE(SUM(is_new),0) AS fresh FROM run_companies WHERE run_id=?', (run.id,))
+            run.new_count, run.known_count = counts['fresh'], counts['total']-counts['fresh']
+            run.investigated = min(run.investigated, counts['total'])
             self.runs.finish(run)
             self.memory.set_last_run(run.id)
             raise
@@ -237,28 +261,34 @@ class SazabiAgent:
 
         ranked: List[Tuple[CompanyProfile, Optional[str], int]] = []
         for candidate in unique:
-            existing = find_existing(candidate, self.companies.candidates_for(candidate))
-            if existing:
-                if self.ignored.is_ignored(existing.id):
-                    run.ignored_count += 1
-                    continue
-                profile, is_new = merge_profiles(existing, candidate), False
-                self.companies.update(profile)
-                run.known_count += 1
-            else:
-                profile, is_new = candidate, True
-                self.companies.add(profile)
-                run.new_count += 1
-            self.runs.add_company(run.id, profile.id, is_new)
+            with self.db.transaction():
+                existing = find_existing(candidate, self.companies.candidates_for(candidate))
+                if existing:
+                    if self.ignored.is_ignored(existing.id) or self.db.query_one('SELECT archived FROM companies WHERE id=?', (existing.id,))['archived']:
+                        run.ignored_count += 1
+                        continue
+                    profile, is_new = merge_profiles(existing, candidate), False
+                    self.companies.update(profile)
+                    run.known_count += 1
+                else:
+                    profile, is_new = candidate, True
+                    self.companies.add(profile)
+                    run.new_count += 1
+                self.runs.add_company(run.id, profile.id, is_new)
+                if candidate.observations:
+                    if is_new:
+                        self.sources.replace_for_company(profile.id, candidate.observations)
+                    else:
+                        self.sources.remember(profile.id, candidate.observations)
 
-            outcome = self._investigate(profile, refresh=False)
-            run.investigated += 1
-            run.with_data += 1 if outcome.observations else 0
-            run.signals_count += len(outcome.signals)
-            best = outcome.hypotheses[0].evidence_level if outcome.hypotheses else None
-            if best and rank(best) >= OPPORTUNITY_MIN_RANK:
-                run.opportunities += 1
-            ranked.append((profile, best, len(outcome.signals)))
+                outcome = self._investigate(profile, refresh=False)
+                run.investigated += 1
+                run.with_data += 1 if outcome.observations else 0
+                run.signals_count += len(outcome.signals)
+                best = outcome.hypotheses[0].evidence_level if outcome.hypotheses else None
+                if best and rank(best) >= OPPORTUNITY_MIN_RANK:
+                    run.opportunities += 1
+                ranked.append((profile, best, len(outcome.signals)))
 
         ranked.sort(key=lambda e: (-opportunity_score(e[0].signals), -(rank(e[1]) if e[1] else 0), e[0].name))
         errors = self.finder.errors + self.investigator.errors
@@ -343,6 +373,9 @@ class SazabiAgent:
             if profile:
                 return profile, None
             return None, "Qual empresa? Informe o nome (ex.: /investigate Oficina Silva)."
+        by_id = self.companies.get(target)
+        if by_id:
+            return by_id, None
         matches = self.companies.search_by_name(target)
         if len(matches) > 1:
             exact = [m for m in matches if m.normalized_name == normalize_name(target)]
@@ -405,19 +438,25 @@ class SazabiAgent:
         profile, msg = self._resolve_company(target)
         if msg:
             return msg
-        self.ignored.remove(profile.id)
-        self.saved.add(profile.id)
-        self.companies.set_status(profile.id, "SAVED")
-        self.memory.set_last_company(profile.id)
+        with self.db.transaction():
+            self.ignored.remove(profile.id)
+            self.saved.add(profile.id)
+            self.companies.set_status(profile.id, "SAVED")
+            self.memory.set_last_company(profile.id)
+            from database.leads import LeadRepository
+            LeadRepository(self.db).event(profile.id, 'saved', 'Ação registrada pelo usuário')
         return f"Empresa salva no histórico de oportunidades: {profile.name}."
 
     def _cmd_ignore(self, target: Optional[str]) -> str:
         profile, msg = self._resolve_company(target)
         if msg:
             return msg
-        self.saved.remove(profile.id)
-        self.ignored.add(profile.id, "ignorada pelo usuário")
-        self.companies.set_status(profile.id, "DISCARDED")
+        with self.db.transaction():
+            self.saved.remove(profile.id)
+            self.ignored.add(profile.id, "ignorada pelo usuário")
+            self.companies.set_status(profile.id, "DISCARDED")
+            from database.leads import LeadRepository
+            LeadRepository(self.db).event(profile.id, 'discarded', 'Ação registrada pelo usuário')
         return (f"Ok. Vou ignorar {profile.name}: ela não será apresentada novamente em novas pesquisas. "
                 f"(Para voltar atrás: \"guarde {profile.name}\".)")
 
@@ -469,7 +508,7 @@ class SazabiAgent:
 
     def _cmd_interesting(self) -> str:
         pairs = self.hypotheses.companies_with_min_level("moderado")
-        profiles = [p for p in (self.companies.get(cid) for cid, _ in pairs) if p and p.status != 'DISCARDED']
+        profiles = [p for p in (self.companies.get(cid) for cid, _ in pairs) if p and p.status != 'DISCARDED' and not self.db.query_one('SELECT archived FROM companies WHERE id=?', (p.id,))['archived']]
         return reports.format_company_list(
             "Empresas com hipóteses de evidência moderada ou forte (ainda hipóteses, não fatos):",
             self._entries(profiles)[:10])

@@ -50,8 +50,11 @@ class CompanyRepository:
         now = now_iso()
         p.id = p.id or uuid.uuid4().hex
         p.first_seen = p.first_seen or now
-        self.db.execute(f"INSERT INTO companies ({', '.join(_COLS)}) VALUES ({_marks(len(_COLS))})",
-                        _values(p, now))
+        with self.db.transaction():
+            self.db.execute(f"INSERT INTO companies ({', '.join(_COLS)}) VALUES ({_marks(len(_COLS))})",
+                            _values(p, now))
+            from database.leads import LeadRepository
+            LeadRepository(self.db).flag_possible_duplicates(p)
         return p.id
 
     def update(self, p: CompanyProfile) -> None:
@@ -105,9 +108,16 @@ class CompanyRepository:
         row = self.db.query_one("SELECT status FROM companies WHERE id=?", (company_id,))
         if row is None or row["status"] == status:
             return
-        self.db.execute("UPDATE companies SET status=?, updated_at=? WHERE id=?",
-                        (status, now_iso(), company_id))
-        self.log_change(company_id, "status", row["status"], status)
+        with self.db.transaction():
+            self.db.execute("UPDATE companies SET status=?, updated_at=? WHERE id=?",
+                            (status, now_iso(), company_id))
+            self.log_change(company_id, "status", row["status"], status)
+            from database.leads import LeadRepository
+            leads=LeadRepository(self.db)
+            commercial={'CONTACTED':'contacted','CLIENT':'converted','DISCARDED':'discarded'}.get(status)
+            if status=='SAVED' and leads.resolve(company_id)['commercial_status']=='discarded':
+                commercial='new'
+            if commercial: leads.stage(company_id,commercial)
 
     def log_change(self, company_id: str, field: str, old: Optional[str], new: Optional[str]) -> None:
         self.db.execute("INSERT INTO company_changes (company_id, field, old_value, new_value, changed_at) "
@@ -128,8 +138,17 @@ class SourceRepository:
     def __init__(self, db: Database):
         self.db = db
 
+    def remember(self, company_id: str, observations: Sequence[Observation]) -> None:
+        with self.db.transaction():
+            for o in observations:
+                checked = o.retrieved_at or now_iso()
+                self.db.conn.execute(
+                    'INSERT INTO source_history(company_id,source_name,url,text,retrieved_at) SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM source_history WHERE company_id=? AND source_name=? AND url IS ? AND text=? AND retrieved_at=?)',
+                    (company_id,o.source_name,o.url,o.text,checked,company_id,o.source_name,o.url,o.text,checked))
+
     def replace_for_company(self, company_id: str, observations: Sequence[Observation]) -> None:
         with self.db.transaction():
+            self.remember(company_id, observations)
             self.db.conn.execute("DELETE FROM sources WHERE company_id=?", (company_id,))
             self.db.conn.executemany(
                 "INSERT INTO sources (company_id, source_name, url, text, retrieved_at) VALUES (?,?,?,?,?)",

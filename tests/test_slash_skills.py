@@ -34,9 +34,9 @@ def test_registry_supports_new_skill_and_command_without_parser_changes():
     skills = SkillRegistry()
     skills.register(skill)
     registry = default_registry()
-    registry.register(CommandDefinition('lead', 'Analyze lead', skill='lead'))
+    registry.register(CommandDefinition('analyzelead', 'Analyze lead', skill='lead'))
     context = object()
-    result = CommandRouter(skills, registry).execute('/lead Original Query', context)
+    result = CommandRouter(skills, registry).execute('/analyzelead Original Query', context)
     assert result.message == 'ok'
     skill.execute.assert_called_once_with('Original Query', context)
     skill.enabled = False

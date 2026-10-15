@@ -16,8 +16,8 @@ def test_same_phone_is_same_company_even_with_different_name_and_format():
     assert is_same_company(co("Alpha", phone="(11) 4000-0001"), co("Clínica Alfa", phone="11 4000 0001"))
 
 
-def test_name_subset_in_same_city_is_same_company():
-    assert is_same_company(co("Oficina Silva"), co("Oficina Silva Auto Center"))
+def test_name_subset_without_strong_identity_requires_review():
+    assert not is_same_company(co("Oficina Silva"), co("Oficina Silva Auto Center"))
 
 
 def test_different_city_is_not_same_company_by_name():

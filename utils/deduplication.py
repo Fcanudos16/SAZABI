@@ -11,7 +11,7 @@ T = TypeVar("T")
 
 
 def _domain(x) -> Optional[str]:
-    return getattr(x, "domain", None) or company_domain(getattr(x, "website", None))
+    return company_domain(getattr(x, "domain", None)) or company_domain(getattr(x, "website", None))
 
 
 def _names_match(a: str, b: str) -> bool:
@@ -46,7 +46,11 @@ def is_same_company(a, b) -> bool:
     aa, ab = normalize_address(getattr(a, "address", None)), normalize_address(getattr(b, "address", None))
     if aa and aa == ab and SequenceMatcher(None, na, nb).ratio() >= 0.6:
         return True
-    return _names_match(na, nb)
+    if da and db_ and da != db_:
+        return False
+    if aa and ab and aa != ab:
+        return False
+    return bool(na) and na == nb
 
 
 def deduplicate(items: Sequence[T], merge: Callable[[T, T], T]) -> Tuple[List[T], int]:
@@ -66,3 +70,11 @@ def deduplicate(items: Sequence[T], merge: Callable[[T, T], T]) -> Tuple[List[T]
 
 def find_existing(item, candidates: Sequence[T]) -> Optional[T]:
     return next((c for c in candidates if is_same_company(c, item)), None)
+
+
+def possible_duplicate(a, b):
+    """A review hint is not enough evidence for an automatic merge."""
+    if is_same_company(a,b):
+        return False
+    ca,cb=normalize_city(a.city),normalize_city(b.city)
+    return (not ca or not cb or ca==cb) and _names_match(normalize_name(a.name),normalize_name(b.name))

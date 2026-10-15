@@ -185,6 +185,15 @@ Consultar
   "o que você encontrou hoje?"                  /results [hoje|ontem]
   "quais empresas parecem interessantes?"       /interesting
   "o que eu pesquisei ontem?"                   /history [hoje|ontem]
+Gerenciar leads locais
+  /leads [texto] [status=new] [salvos] [arquivados] [pagina=1]
+  /lead ID                                     detalhes, fontes e histórico comercial
+  /stage ID new|qualified|contact_pending|contacted|negotiating|converted|discarded
+  /note ID texto                               observações editáveis (- para limpar)
+  /edit ID phone|segment|city|address|description valor
+  /action ID response|next|note texto           registrar ação comercial, sem enviar mensagens
+  /archive ID                                  arquivar com confirmação; /restore ID restaura
+  /export csv|json ID,ID                        somente IDs selecionados; arquivos locais
 Gerenciar
   "guarde essa empresa"                         /save [nome]
   "ignore essa empresa"                         /ignore [nome]

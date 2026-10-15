@@ -194,6 +194,12 @@ A especificação fornecida pelo usuário está preservada em `skills/search/SKI
 ### Estado da implementação da especificação
 
 - Integrados: documento original, vínculo com `/search`, bloqueio de provedores com créditos/cobrança, verificação de descoberta e enriquecimento, região padrão e resposta de configuração ausente.
-- Pendente de implementação: adaptador gratuito autorizado, descoberta em duas passagens, nova pontuação 0–100, confiança e formato de leads descritos no documento, rotação de nichos e estados adicionais de prospecção. O pipeline anterior não deve ser confundido com a implementação desses critérios.
+- Pendente de implementação: adaptador gratuito autorizado, descoberta em duas passagens, nova pontuação 0–100, confiança e formato de leads descritos no documento, rotação de nichos. Os estágios comerciais locais foram implementados na fase 2. O pipeline anterior não deve ser confundido com a implementação desses critérios.
 - A marca `search_skill_cost_policy = 'zero_cost'` é um contrato de implementação do adaptador, não uma opção do `.env`. Só deve ser declarada após verificar o serviço, permissões e implementar os critérios pendentes acima. Não marque o adaptador Tavily como gratuito.
 - Fixtures sintéticas são aceitas exclusivamente em testes com `mock=True`; não habilitam pesquisas de produção.
+
+## Gestão local de leads — fase 2
+
+Clique em **Leads** no terminal ou use `/leads`. A mesma base SQLite agora mantém estágios comerciais, observações, histórico de ações e fontes, arquivamento com confirmação e exportação selecionada para CSV/JSON. Exemplos: `/lead ID`, `/stage ID qualified`, `/note ID texto`, `/export csv ID1,ID2`.
+
+Consulte [FASE2_LEADS.md](FASE2_LEADS.md) para comandos, estrutura, migração, backup e recuperação. A migração é automática e preserva IDs e dados existentes. Isso não altera a limitação de provedor gratuito do `/search`.

@@ -31,7 +31,7 @@ class ResultTerminal:
         button(header, '×', self.hide).pack(side='right')
         actions = tk.Frame(body, bg=BG)
         actions.pack(fill='x', padx=12, pady=(0, 6))
-        for text, command in [('Resultados', '/results'), ('Histórico', '/history'), ('Ajuda', '/help')]:
+        for text, command in [('Leads', '/leads'), ('Resultados', '/results'), ('Histórico', '/history'), ('Ajuda', '/help')]:
             button(actions, text, lambda value=command: app.submit(value)).pack(side='left', padx=(0, 5))
         button(actions, 'Nova pesquisa', app.open_search).pack(side='left', padx=5)
         self.cancel = button(actions, 'Cancelar', app.worker.cancel)

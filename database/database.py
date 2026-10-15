@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -127,6 +127,12 @@ class Database:
         if 'error_message' not in columns:
             self.conn.execute("ALTER TABLE research_runs ADD COLUMN error_message TEXT NOT NULL DEFAULT ''")
         self.conn.commit()
+        try:
+            from database.migrations import migrate
+            migrate(self)
+        except BaseException:
+            self.conn.close()
+            raise
 
     @contextmanager
     def transaction(self):
@@ -160,8 +166,9 @@ class Database:
         from datetime import datetime, timezone
         root = Path(directory) if directory else Path(self.path).parent / 'backups'
         root.mkdir(parents=True, exist_ok=True)
-        filename = root / (Path(self.path).stem + '_' + datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f') + '.db')
-        with sqlite3.connect(str(filename)) as target:
+        stem = 'sazabi' if self.path == ':memory:' else Path(self.path).stem
+        filename = root / (stem + '_' + datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f') + '.db')
+        with closing(sqlite3.connect(str(filename))) as target:
             self.conn.backup(target)
             if target.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise RuntimeError('Backup falhou na verificação de integridade')

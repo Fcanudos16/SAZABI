@@ -31,7 +31,7 @@ class SlashAutocomplete:
         self.box.delete(0, 'end')
         for command in self.options:
             self.box.insert('end', '/' + command.name + '  ·  ' + command.description)
-        self.box.configure(height=len(self.options))
+        self.box.configure(height=min(6, len(self.options)))
         self.box.selection_set(0)
         self.box.place(relx=0, rely=1, x=12, y=-85, relwidth=1, width=-24, anchor='sw')
         self.box.lift()
@@ -43,6 +43,7 @@ class SlashAutocomplete:
             target = ((index[0] if index else 0)+direction) % len(self.options)
             self.box.selection_clear(0, 'end')
             self.box.selection_set(target)
+            self.box.see(target)
             return 'break'
 
     def accept(self, event=None):
@@ -51,7 +52,7 @@ class SlashAutocomplete:
         index = self.box.curselection()
         command = self.options[index[0] if index else 0]
         self.entry.delete(0, 'end')
-        self.entry.insert(0, '/' + command.name + (' ' if command.skill else ''))
+        self.entry.insert(0, '/' + command.name + (' ' if command.skill or command.action == 'lead' else ''))
         self.entry.icursor('end')
         self.entry.focus_set()
         self.hide()

@@ -452,7 +452,8 @@ def run(mock=False):
         app.terminal.autocomplete.refresh()
         tick(.1)
         assert app.terminal.autocomplete.visible
-        assert [item.name for item in app.terminal.autocomplete.options] == ['search', 'ai']
+        assert [item.name for item in app.terminal.autocomplete.options][:2] == ['search', 'ai']
+        assert 'leads' in [item.name for item in app.terminal.autocomplete.options]
         app.terminal.entry.event_generate('<Tab>')
         tick(.1)
         assert app.terminal.entry.get() == '/search '

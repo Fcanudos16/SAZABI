@@ -27,4 +27,7 @@ def default_registry():
     registry = CommandRegistry()
     registry.register(CommandDefinition('search', 'Pesquisa e prospecção comercial', skill='search'))
     registry.register(CommandDefinition('ai', 'Abrir Terminal de IA conectado à LAYLA', action='open_ai'))
+    from core.lead_commands import COMMANDS
+    for name, description in COMMANDS.items():
+        registry.register(CommandDefinition(name, description, action="lead"))
     return registry
