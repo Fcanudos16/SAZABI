@@ -64,6 +64,26 @@ def position(window, x, y):
     user.SetWindowPos(hwnd(window), None, x, y, 0, 0, 0x0010 | 0x0001 | 0x0004)
 
 
+def minimize(window):
+    """Minimize custom chrome without minimizing its owner (the mascot)."""
+    _show_window(window, 6)  # SW_MINIMIZE
+
+
+def _show_window(window, command):
+    # Queue the transition for Tk's message pump. Synchronous ShowWindow can
+    # reenter Tcl's Python bindings outside _tkinter's event-loop context.
+    show = api()[0].ShowWindowAsync
+    show.argtypes, show.restype = [w.HWND, c.c_int], w.BOOL
+    show(hwnd(window), command)
+
+
+def restore(window):
+    user, _ = api()
+    user.IsIconic.argtypes = [w.HWND]
+    if user.IsIconic(hwnd(window)):
+        _show_window(window, 9)  # SW_RESTORE; only on user action
+
+
 def is_foreground(window):
     user, _ = api()
     active, handle = user.GetForegroundWindow(), hwnd(window)

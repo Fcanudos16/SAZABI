@@ -2,7 +2,7 @@
 import argparse
 from pathlib import Path
 from core.config import load_config
-from core.worker import AgentWorker, ConnectRequest, OllamaRequest
+from core.worker import AgentWorker, ConnectRequest, GroqRequest
 from utils.logger import setup_logging
 
 

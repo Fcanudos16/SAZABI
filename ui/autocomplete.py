@@ -1,7 +1,7 @@
 """Local overlay; never changes the composer or parent window dimensions."""
 import tkinter as tk
 from core.commands.registry import default_registry
-from ui.terminal import BG, FG, BORDER, FONT
+from ui.theme import BG, FG, BORDER, FONT, BRIGHT
 
 class SlashAutocomplete:
     def __init__(self, terminal):
@@ -10,7 +10,7 @@ class SlashAutocomplete:
         self.options = []
         self.visible = False
         self.box = tk.Listbox(terminal.body, bg=BG, fg=FG, selectbackground=BORDER,
-                              selectforeground='#c9fbd5', font=FONT, bd=1,
+                              selectforeground=BRIGHT, font=FONT, bd=1,
                               highlightbackground=BORDER, highlightthickness=1,
                               exportselection=False, activestyle='none', takefocus=False)
         self.entry.bind('<KeyRelease>', self.refresh, add='+')

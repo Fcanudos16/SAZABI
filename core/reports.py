@@ -82,7 +82,7 @@ def format_search_report(run: ResearchRun, criteria: SearchCriteria, ranked: Seq
                          errors: Sequence[str], no_sources: bool, mock: bool) -> str:
     lines = ["Pesquisa concluída com limitações." if errors else "Pesquisa concluída.", "", "Critérios:", _bullets(criteria.describe() or ["Sem filtros"]), ""]
     if no_sources:
-        lines.append("Configure sua chave Tavily na janela Configuração ou em SEARCH_API_KEY no .env.")
+        lines.append("Configure SEARCH_API_KEY no .env e reinicie o SAZABI.")
         return "\n".join(lines)
     lines += ["Resultados:", _bullets([
         _pl(run.found, "encontrada nas fontes", "encontradas nas fontes"),
@@ -173,7 +173,7 @@ def format_help() -> str:
 Fale naturalmente ou use comandos:
 
 Pesquisar
-  /search clínicas em Campinas                 skill de custo zero; exige adaptador gratuito autorizado
+  /search clínicas em Campinas                 pesquisa com Tavily (usa créditos)
   /research clínicas em Campinas               pesquisa legada Tavily; usa créditos da conta
   "procure pequenas clínicas em São Paulo"      também usa a pesquisa legada Tavily
   "faça uma pesquisa silenciosa por oficinas em Campinas"  (só envia o resumo)
@@ -208,7 +208,7 @@ Gerenciar
   /forget [nome]                                apaga os dados da empresa (pede confirmação)
 Outros
   /ai [texto]                                  abrir terminal LAYLA; texto vira rascunho para enviar
-  /ollama <nome>                                   interpretação opcional via Ollama local
+  /groq <nome>                                   interpretação opcional via Groq
   /set region <cidade>                          região padrão para pesquisas
   /status    /help    sair
 

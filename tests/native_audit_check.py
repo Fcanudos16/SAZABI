@@ -35,7 +35,7 @@ def run():
                     assert submit.call_count == 1
                 wait(lambda: app.terminal.last_skill_result is not None and not app.busy)
                 assert app.terminal.last_skill_result['status'] == 'unconfigured'
-                assert 'custo zero' in app.terminal.output.get('1.0', 'end')
+                assert 'configurada' in app.terminal.output.get('1.0', 'end')
                 external.assert_not_called()
             with patch('integrations.layla.session.LaylaBridge') as factory:
                 bridge = factory.return_value
@@ -59,7 +59,7 @@ def run():
                 terminal.busy(False)
                 assert terminal.entry.get() == 'Nova prévia enquanto ocupado'
                 assert bridge.send.call_count == 1
-                assert app.terminal.last_result and 'custo zero' in app.terminal.last_result[0]
+                assert app.terminal.last_result and 'configurada' in app.terminal.last_result[0]
             print('PASS: native /search duplicate guard, unconfigured state, no external call; /ai draft, send, reset and independent result.')
         finally:
             app.close()

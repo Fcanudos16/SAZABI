@@ -84,7 +84,7 @@ def test_connect_saves_key_without_history_and_reuses_database(tmp_path, monkeyp
         assert 'DEFAULT_REGION=Campinas' in path.read_text(encoding='utf-8')
         assert len(agent.finder.sources) == 1 and agent.finder.sources == agent.investigator.sources
         assert agent.db.query('SELECT * FROM conversation_history') == []
-        assert 'campo protegido' in agent.handle('tvly-test-private-key')
+        assert 'somente no .env' in agent.handle('tvly-test-private-key')
         assert agent.db.query('SELECT * FROM conversation_history') == []
     finally:
         monkeypatch.delenv('SEARCH_API_KEY', raising=False)

@@ -14,8 +14,12 @@ class SearchSkill:
     def __init__(self, config_path=None):
         self.state = 'idle'
         self.config_error = False
+        self.allow_tavily = False
         try:
             settings = json.loads(Path(config_path or Path(__file__).with_name('config.json')).read_text(encoding='utf-8-sig'))
+            self.allow_tavily = settings.get('allow_tavily', False)
+            if type(self.allow_tavily) is not bool:
+                raise ValueError
             self.enabled = settings['enabled']
             self.timeout = settings['timeout_seconds']
             if type(self.enabled) is not bool or type(self.timeout) not in (int, float) or not 5 <= self.timeout <= 600:
@@ -33,18 +37,21 @@ class SearchSkill:
                                   skill_name=self.name, skill_query=query)
             self.state = 'idle'
             return SkillResult(False, self.name, 'needs_input', message='Qual região devo pesquisar?')
-        # Explicit opt-in belongs to the adapter implementation, not to an API key
-        # or a claimed free tier. Check discovery AND enrichment before any call.
+        # Paid Tavily access requires explicit opt-in; validate discovery and enrichment.
+        from research.web_source import WebSource, TavilySearch
         sources = agent.finder.sources + agent.investigator.sources
         allowed = bool(agent.finder.sources) and all(
             getattr(source, 'search_skill_cost_policy', None) == 'zero_cost'
+            or (self.allow_tavily and isinstance(source, WebSource)
+                and isinstance(source.provider, TavilySearch) and bool(source.provider.key))
             or (agent.config.mock and getattr(source, 'search_skill_cost_policy', None) == 'test_fixture')
             for source in sources)
         if self.config_error or not self.specification.is_file() or not allowed:
             self.state = 'failed'
-            message = ('Pesquisa não iniciada. Search Skill ainda não configurada para custo zero. '
-                       'Falta um adaptador de pesquisa gratuito e autorizado, sem créditos ou cobrança, '
-                       'compatível com skills/search/SKILL.md. A chave Tavily não habilita esta skill. '
+            message = ('Pesquisa não iniciada. Search Skill ainda não configurada. '
+                       'Configure SEARCH_API_KEY no .env e reinicie; Tavily usa créditos e exige '
+                       'allow_tavily=true em skills/search/config.json. '
+                       'Fontes desconhecidas ou configuração inválida também impedem a pesquisa. '
                        'Nenhuma consulta foi enviada e nenhum resultado foi fabricado.')
             context.state('failed')
             agent.emit('TASK_ERROR', message=message)

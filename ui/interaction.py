@@ -1,7 +1,7 @@
 """Nonmodal native Tk popup: animations remain alive while choosing an action."""
 import tkinter as tk
 from ui import native
-from ui.terminal import SHELL_BG as BG, FG, ACCENT as BORDER, FONT
+from ui.theme import SHELL_BG as BG, FG, ACCENT as BORDER, FONT
 
 
 class SazabiInteractionController:

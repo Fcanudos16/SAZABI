@@ -1,12 +1,16 @@
+> Migração para Groq: configure `AI_PROVIDER=groq`, `GROQ_API_KEY` e `GROQ_MODEL=llama-3.3-70b-versatile` no `.env` e reinicie. `/groq` envia evidências à API Groq. Consulte o README para a configuração atual.
+
+> Atualização: o acesso à janela Configuração foi retirado do front. Configure APIs e Groq no `.env` e reinicie. O componente legado permanece interno, sem entrada no menu.
+
 # Operação do SAZABI
 
 ## Primeira execução
 
-Execute `python main.py` ou `iniciar_sazabi.cmd` no Windows. A inicialização mostra somente o mascote, sem dashboard ou terminal aberto. Clique direito no personagem → Configuração, informe sua chave Tavily e clique em Salvar e conectar. A chave é validada por `GET /usage` antes de substituir a configuração anterior. Uma falha de validação preserva a chave anterior.
+Execute `python main.py` ou `iniciar_sazabi.cmd` no Windows. A inicialização mostra somente o mascote, sem dashboard ou terminal aberto. Configure `SEARCH_API_KEY` no arquivo privado `.env` e reinicie o SAZABI. As preferências não possuem campos de credenciais; mantêm somente opções funcionais, como o modelo Groq. Consulte `ATUALIZACAO_DESKTOP.md`.
 
 A chave fica no `.env` local, não na conversa nem no banco. O arquivo é gravado por substituição atômica, preservando as outras variáveis. O campo é mascarado e limpo ao enviar. Proteja o acesso à sua pasta: o `.env` é texto local, não um cofre criptografado.
 
-O programa abre sem chave. Configurar Tavily não exige OpenAI, Ollama ou Telegram. A chave antiga do Brave não é compatível.
+O programa abre sem chave. Configurar Tavily não exige OpenAI, Groq ou Telegram. A chave antiga do Brave não é compatível.
 
 ## Pesquisa e evidências
 
@@ -57,7 +61,7 @@ Posição e preferências são guardadas em `companion.json` ao lado do banco. S
 
 ## Monitor do computador
 
-Use **Clique direito → Monitor do sistema**. Não exige chave de API nem Ollama. CPU, RAM, disco e tempo ligado são coletados localmente com `psutil`, a cada segundo, em uma thread separada da pesquisa e da interface. O disco é a raiz da unidade corrente. Informações de máquina são mostradas apenas nessa janela, sem envio ou persistência no SQLite.
+Use **Clique direito → Monitor do sistema**. Não exige chave de API nem Groq. CPU, RAM, disco e tempo ligado são coletados localmente com `psutil`, a cada segundo, em uma thread separada da pesquisa e da interface. O disco é a raiz da unidade corrente. Informações de máquina são mostradas apenas nessa janela, sem envio ou persistência no SQLite.
 
 Fechar ou minimizar pausa novas leituras. Reabrir aguarda uma amostra nova e não cria outra thread. Sempre no topo também se aplica ao monitor. Ao encerrar SAZABI, o coletor recebe sinal de encerramento. Se faltar `psutil`, instale com `python -m pip install -r requirements.txt` usando o Python que inicia o aplicativo e reinicie. O restante do SAZABI continua acessível.
 
@@ -75,11 +79,10 @@ Terminal: `python main.py --cli`. Execução única: `python main.py -c "/status
 
 Telegram: configure `TELEGRAM_BOT_TOKEN` e `TELEGRAM_ALLOWED_USER_IDS`, depois execute `python main.py --telegram`. Somente chats privados autorizados acessam o agente. A base é compartilhada entre autorizados; o contexto e as confirmações são separados por usuário. Não envia mensagens comerciais automaticamente.
 
-IA local: configure `AI_PROVIDER=ollama`, `OLLAMA_MODEL` e disponibilize Ollama em `127.0.0.1:11434`. `/ai Nome` interpreta trechos, sem alterar evidências ou score. IA em nuvem não faz parte desta versão.
+IA com Groq: configure `AI_PROVIDER=groq`, `GROQ_API_KEY` e `GROQ_MODEL=llama-3.3-70b-versatile` no `.env` e reinicie. `/groq Nome` interpreta evidências usando a API HTTPS do Groq, sem alterar evidências ou score. Os trechos são enviados ao provedor e estão sujeitos aos limites e custos da conta. `/ai` abre a LAYLA separadamente.
 
-Também pode configurar pelo menu do mascote **Configuração**, seção Ollama: clique em Atualizar, selecione e ative. O SAZABI consulta `/api/tags` e `/api/show` antes de ativar; modelos remotos e modelos sem capacidade de geração de texto são recusados. Ativação não baixa nem carrega um modelo. `/api/chat` executa a interpretação somente quando você pede `/ai` e existem evidências com fonte.
+Respostas incompletas, vazias, excessivas, recusadas ou com chamadas de ferramentas são rejeitadas. O texto é apresentado como interpretação não validada e não é incorporado ao histórico de evidências. Em falha, os relatórios determinísticos continuam disponíveis. Diagnóstico opcional: `python tests/groq_connection_check.py`.
 
-Respostas incompletas, vazias, excessivas ou com chamadas de ferramentas são rejeitadas. O texto gerado é apresentado como interpretação não validada e não é incorporado ao histórico de evidências. Em falha, os relatórios determinísticos continuam disponíveis. Referências: [modelos instalados](https://docs.ollama.com/api/tags) e [chat](https://docs.ollama.com/api/chat).
 
 ## Verificação
 
@@ -89,6 +92,6 @@ O runner cria diretórios únicos de teste em `data/test-runs/`, sem reutilizar 
 
 `python tests/native_desktop_check.py` verifica inicialização só com mascote, seis poses, região transparente e olhos, arraste versus clique, limite do terminal, fechamento ao perder foco, conclusão sem roubar foco, configuração e encerramento. Usa banco em memória e respostas controladas. `--screenshots` captura somente as próprias janelas de teste em `data/desktop-previews/`; capturas com prefixo `fixture-` usam dados sintéticos exclusivos dos testes.
 
-`python tests/public_network_check.py` realiza GETs públicos sem credenciais e sem gravar empresas. Busca Tavily autenticada, Telegram e Ollama precisam de validação com sua conta/serviço. Não confunda teste offline com validação em produção.
+`python tests/public_network_check.py` realiza GETs públicos sem credenciais e sem gravar empresas. Busca Tavily autenticada, Telegram e Groq precisam de validação com sua conta/serviço. Não confunda teste offline com validação em produção.
 
 Contratos: [Tavily Search](https://docs.tavily.com/documentation/api-reference/endpoint/search), [Tavily Usage](https://docs.tavily.com/documentation/api-reference/endpoint/usage), [robots.txt](https://www.rfc-editor.org/rfc/rfc9309.html).

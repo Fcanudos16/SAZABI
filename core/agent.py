@@ -125,8 +125,8 @@ class SazabiAgent:
         except ValueError as error:
             return str(error)
         if re.search(r'\btvly-[A-Za-z0-9_-]+', text):
-            return 'Use o campo protegido em Configuração para informar a chave Tavily. Ela não foi salva na conversa.'
-        if command and command.name == 'ollama':
+            return 'Configure SEARCH_API_KEY ou GROQ_API_KEY somente no .env e reinicie. A chave não foi salva na conversa.'
+        if command and command.name == 'groq':
             self._pending = None
             return self._ai_summary(command.arguments)
         if command and self.command_router.registry.get(command.name):
@@ -153,22 +153,22 @@ class SazabiAgent:
         return reply
 
     def _ai_summary(self, target):
-        if self.config.mock or self.config.ai_provider != 'ollama':
-            return 'IA desativada. Clique direito no mascote → Configuração. Na seção Ollama, selecione um modelo instalado e ative.'
+        if self.config.mock or self.config.ai_provider != 'groq':
+            return 'IA desativada. Configure AI_PROVIDER=groq, GROQ_API_KEY e GROQ_MODEL no .env e reinicie.'
         profile, error = self._resolve_company(target)
         if error:
             return error
         try:
-            from analysis.ai_provider import OllamaProvider
-            self.emit('TASK_PROCESSING', message='Interpretando evidências com Ollama local.')
-            text = OllamaProvider(self.config.ollama_model).summarize(self.sources.list_for_company(profile.id))
+            from analysis.ai_provider import GroqProvider
+            self.emit('TASK_PROCESSING', message='Interpretando evidências com Groq.')
+            text = GroqProvider(self.config.groq_model, self.config.groq_api_key).summarize(self.sources.list_for_company(profile.id))
             return 'Interpretação por IA (não validada; não altera dados nem prioridade):\n' + text
         except ValueError as error:
-            self.emit('TASK_ERROR', message='A interpretação local não foi concluída.')
+            self.emit('TASK_ERROR', message='A interpretação não foi concluída.')
             return 'Interpretação indisponível: ' + str(error)
         except Exception:
-            self.emit('TASK_ERROR', message='Ollama local indisponível.')
-            return 'IA local indisponível. Os relatórios determinísticos continuam disponíveis.'
+            self.emit('TASK_ERROR', message='Groq indisponível.')
+            return 'IA Groq indisponível. Os relatórios determinísticos continuam disponíveis.'
 
     def _dispatch(self, cmd: Command, text: str) -> str:
         if self._pending:
@@ -260,7 +260,7 @@ class SazabiAgent:
     def _run_search_locked(self, criteria: SearchCriteria) -> str:
         if not self.finder.sources:
             self.emit('TASK_ERROR', message='Configure sua chave Tavily para pesquisar.')
-            return 'Pesquisa não iniciada. Abra Configuração e conecte sua chave Tavily, ou preencha SEARCH_API_KEY no .env.'
+            return 'Pesquisa não iniciada. Preencha SEARCH_API_KEY no .env e reinicie o SAZABI.'
         run = self.runs.create(criteria)
         try:
             return self._execute_search(criteria, run)

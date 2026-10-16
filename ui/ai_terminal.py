@@ -4,7 +4,7 @@ from tkinter import ttk
 from queue import Empty
 from integrations.layla.session import LaylaSession
 from ui import native
-from ui.terminal import BG, FG, MUTED, BORDER, FONT, button
+from ui.theme import BG, FG, MUTED, BORDER, FONT, button, titlebar
 
 class AITerminal:
     def __init__(self, app, session_factory=LaylaSession):
@@ -17,6 +17,7 @@ class AITerminal:
         self.window.title('SAZABI AI TERMINAL')
         self.window.configure(bg=BORDER)
         self.window.resizable(False, False)
+        titlebar(self.window, 'SAZABI / LAYLA', self.hide)
         body = tk.Frame(self.window, bg=BG)
         body.pack(fill='both', expand=True, padx=1, pady=1)
         header = tk.Frame(body, bg=BG)
@@ -68,6 +69,7 @@ class AITerminal:
         x, y = native.place_near(self.app.x, self.app.y, self.app.atlas.width, self.app.atlas.height, width, height, area)
         self.window.geometry(f'{width}x{height}{x:+d}{y:+d}')
         self.window.attributes('-topmost', self.app.always_on_top.get())
+        native.restore(self.window)
         self.window.deiconify()
         native.position(self.window, x, y)
         self.window.lift()

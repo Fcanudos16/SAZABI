@@ -77,11 +77,11 @@ def test_skill_config_error_is_safe(agent, tmp_path):
     assert result.status == 'unconfigured' and str(path) not in result.message
 
 
-def test_ai_only_requests_terminal_and_ollama_remains_separate(agent):
-    with patch('analysis.ai_provider.OllamaProvider') as ollama:
+def test_ai_only_requests_terminal_and_groq_remains_separate(agent):
+    with patch('analysis.ai_provider.GroqProvider') as groq:
         agent.handle('/ai Analise os leads')
         assert agent.last_skill_result.data == {'action': 'open_ai', 'draft': 'Analise os leads'}
-        ollama.assert_not_called()
+        groq.assert_not_called()
 
 
 def test_cancelled_before_execution_creates_no_run(agent):
@@ -162,7 +162,7 @@ def test_search_restores_transport_after_cancel(agent):
     agent.finder.sources = agent.investigator.sources = [source]
     cancel.set()
     agent.handle('/search empresas em Campinas', cancelled=cancel)
-    assert agent.last_skill_result.status == 'unconfigured'
+    assert agent.last_skill_result.status == 'cancelled'
     assert client.checkpoint is previous and agent.skill_context is None
 
 
@@ -191,12 +191,13 @@ def test_region_answer_continues_the_same_skill(agent):
     assert agent.last_skill_result.data['run_id'] == agent.runs.last().id
 
 
-def test_paid_provider_is_blocked_even_with_key():
+def test_tavily_can_be_disabled_even_with_key():
     agent = build_agent(Config(database_path=':memory:', search_api_key='test-key'))
     try:
+        agent.skills.get('search').allow_tavily = False
         with patch.object(agent.finder, 'find') as find, patch('utils.http_client.HttpClient.request') as request:
             reply = agent.handle('/search mercadinhos em Campinas')
-            assert 'custo zero' in reply and 'Tavily' in reply
+            assert 'configurada' in reply and 'Tavily' in reply
             assert agent.last_skill_result.status == 'unconfigured'
             find.assert_not_called()
             request.assert_not_called()
@@ -209,7 +210,7 @@ def test_empty_search_asks_only_region_then_checks_provider():
     agent = build_agent(Config(database_path=':memory:'))
     try:
         assert agent.handle('/search') == 'Qual região devo pesquisar?'
-        assert 'custo zero' in agent.handle('Campinas')
+        assert 'configurada' in agent.handle('Campinas')
         assert agent.last_skill_result.status == 'unconfigured'
     finally:
         agent.db.close()
@@ -224,7 +225,7 @@ def test_empty_search_uses_saved_region(agent):
 
 def test_fixture_not_authorized_in_production(agent):
     agent.config.mock = False
-    assert 'custo zero' in agent.handle('/search oficinas em Campinas')
+    assert 'configurada' in agent.handle('/search oficinas em Campinas')
     assert agent.runs.count() == 0
 
 
@@ -234,3 +235,17 @@ def test_paid_enrichment_cannot_bypass_free_discovery(agent):
         agent.handle('/search oficinas em Campinas')
         assert agent.last_skill_result.status == 'unconfigured'
         find.assert_not_called()
+
+
+def test_authorized_tavily_search_uses_pipeline_and_saves_run():
+    agent = build_agent(Config(database_path=':memory:', search_api_key='test-key', default_region='São Paulo, capital'))
+    try:
+        source = agent.finder.sources[0]
+        with patch.object(source.provider, 'search', return_value=[]) as search:
+            reply = agent.handle('/search')
+        assert agent.last_skill_result.success
+        assert agent.last_skill_result.status == 'completed'
+        assert agent.runs.count() == 1
+        assert 'São Paulo' in search.call_args.args[0]
+    finally:
+        agent.db.close()

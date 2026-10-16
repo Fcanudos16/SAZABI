@@ -6,7 +6,7 @@ from tkinter import ttk
 from system_monitor.service import MonitorSampler
 from system_monitor.formatter import format_bytes, format_uptime
 from ui import native
-from ui.terminal import BG, FG, MUTED, BORDER, FONT, button
+from ui.theme import BG, FG, MUTED, BORDER, FONT, button, titlebar
 
 
 class SystemMonitorWindow:
@@ -17,6 +17,7 @@ class SystemMonitorWindow:
         self.window.title('SAZABI · Monitor do sistema')
         self.window.configure(bg=BG)
         self.window.resizable(False, False)
+        titlebar(self.window, 'SAZABI / MONITOR', self.hide)
         self.visible, self.running, self.job = False, False, None
         self.last_snapshot, self.sample_count = None, 0
         self.sampler = MonitorSampler()
@@ -26,10 +27,6 @@ class SystemMonitorWindow:
         self.system = tk.StringVar(value='Lendo informações locais…')
         tk.Label(body, textvariable=self.system, bg=BG, fg=MUTED, font=('Consolas', 9),
                  wraplength=560, height=4, justify='left', anchor='w').pack(fill='x', pady=(8, 10))
-        style = ttk.Style(self.window)
-        style.theme_use('clam')
-        style.configure('Sazabi.Horizontal.TProgressbar', background=FG, troughcolor=BG,
-                        bordercolor=BORDER, lightcolor=FG, darkcolor=FG)
         self.labels, self.bars = {}, {}
         for key, title in [('cpu', 'CPU'), ('memory', 'RAM'), ('disk', 'DISCO')]:
             self.labels[key] = tk.StringVar(value=title + ' · aguardando leitura')
@@ -57,6 +54,7 @@ class SystemMonitorWindow:
                                  width, height, native.work_area(self.app.root))
         self.window.geometry(f'{width}x{height}{x:+d}{y:+d}')
         self.window.attributes('-topmost', self.app.always_on_top.get())
+        native.restore(self.window)
         self.window.deiconify()
         self.window.update_idletasks()
         native.position(self.window, x, y)

@@ -14,7 +14,7 @@ class ConnectRequest:
 
 
 @dataclass
-class OllamaRequest:
+class GroqRequest:
     action: str
     model: str = ''
 
@@ -46,32 +46,32 @@ class AgentWorker:
             if not config.mock and config.database_path != ':memory:':
                 agent.db.backup()
             self.events.put(('ready', 'Pronto para pesquisar.' if config.mock or config.search_api_key
-                             else 'Abra Configuração para conectar a Tavily. Histórico local disponível.'))
+                             else 'Configure SEARCH_API_KEY no .env e reinicie. Histórico local disponível.'))
             self._snapshot(agent)
             while True:
                 command = self.commands.get()
                 if command is None:
                     break
-                if isinstance(command, OllamaRequest):
+                if isinstance(command, GroqRequest):
                     try:
                         from analysis.ai_provider import list_models
-                        from core.connection import configure_ollama
+                        from core.connection import configure_groq
                         if command.action == 'list':
-                            self.events.put(('ollama_models', list_models()))
+                            self.events.put(('groq_models', list_models(agent.config.groq_api_key)))
                         else:
-                            configure_ollama(agent, command.model)
-                            self.events.put(('ollama_ready', 'IA local ativada: ' + command.model if command.model else 'IA local desativada.'))
+                            configure_groq(agent, command.model)
+                            self.events.put(('groq_ready', 'IA Groq ativada: ' + command.model if command.model else 'IA Groq desativada.'))
                     except (ValueError, OSError) as error:
-                        self.events.put(('ollama_error', str(error) if isinstance(error, ValueError) else 'Não foi possível salvar a configuração local.'))
+                        self.events.put(('groq_error', str(error) if isinstance(error, ValueError) else 'Não foi possível salvar a configuração local.'))
                     except Exception:
-                        self.events.put(('ollama_error', 'Falha ao configurar Ollama. Tente novamente.'))
+                        self.events.put(('groq_error', 'Falha ao configurar Groq. Tente novamente.'))
                     continue
                 if isinstance(command, ConnectRequest):
                     from core.connection import connect
                     from utils.http_client import FetchError
                     try:
                         connect(agent, command.key)
-                        self.events.put(('connected', 'Tavily conectada. Chave salva para a pesquisa legada. /search exige um adaptador gratuito autorizado.'))
+                        self.events.put(('connected', 'Tavily conectada. /search e /research usam créditos da conta.'))
                     except (FetchError, ValueError) as error:
                         self.events.put(('connection_error', str(error)))
                     except OSError:

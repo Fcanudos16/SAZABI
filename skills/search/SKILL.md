@@ -20,7 +20,7 @@ A skill deve entregar leads acionáveis, não uma lista genérica de nomes.
 
 ## 2. Regras inegociáveis
 
-1. **Custo zero:** não executar chamadas que possam gerar cobrança, não usar APIs pagas, não depender de créditos promocionais, testes grátis ou serviços que exijam cartão como condição de uso. Não ativar cobrança nem cadastrar meios de pagamento. Preferir ferramentas locais, fontes abertas e provedores de pesquisa já disponíveis e autorizados no ambiente.
+1. **Provedor autorizado:** o usuário autorizou Tavily com consumo de créditos para `/search`. Use a chave existente `SEARCH_API_KEY` e a opção explícita `allow_tavily=true` em `config.json`. Não ativar faturamento nem cadastrar meios de pagamento. Respeitar `SEARCH_LIMIT` e o tempo limite; não apresentar Tavily como custo zero.
 2. **Resultados reais:** nunca inventar nome de empresa, endereço, telefone, site, e-mail, reclamação, tecnologia usada ou necessidade comercial.
 3. **Evidência por lead:** cada candidato apresentado precisa ter pelo menos uma URL pública que comprove que o negócio existe e esteja ativo ou tenha sinais recentes de atividade. Oportunidades inferidas devem ser identificadas como hipóteses, não fatos.
 4. **Transparência:** registrar as fontes consultadas e a data da verificação. Distinguir fatos observados de interpretação do Sazabi.
@@ -112,7 +112,7 @@ Não abrir dezenas de páginas sem critério. Parar quando já houver uma lista 
 
 ### 4.5 Se não houver mecanismo de busca conectado
 
-O backend deve verificar se existe um provedor de pesquisa gratuito e autorizado já configurado. Se nenhum existir, não simular acesso à internet nem inventar resultados. Informar claramente que o mecanismo de pesquisa não está configurado e apresentar o requisito técnico que falta. Pode abrir consultas no navegador para pesquisa manual, se essa função já existir no Sazabi, mas deve marcar esse modo como assistido, e não como pesquisa automatizada concluída.
+O backend deve verificar se existe um provedor de pesquisa autorizado já configurado (Tavily com créditos, quando habilitado). Se nenhum existir, não simular acesso à internet nem inventar resultados. Informar claramente que o mecanismo de pesquisa não está configurado e apresentar o requisito técnico que falta. Pode abrir consultas no navegador para pesquisa manual, se essa função já existir no Sazabi, mas deve marcar esse modo como assistido, e não como pesquisa automatizada concluída.
 
 A skill não deve instalar dependências, ativar faturamento, pedir chaves pagas nem chamar a LAYLA para raciocinar. A análise inicial deve usar regras locais e os dados realmente encontrados.
 

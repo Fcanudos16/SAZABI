@@ -4,7 +4,8 @@ import time
 import tkinter as tk
 from ui import native
 from ui.behavior import ease
-from ui.terminal import BG, FG
+from ui.theme import BG, FG, BORDER, MUTED
+from ui.sprites import TRANSPARENT_COLOR
 
 
 class SleepBubbles:
@@ -28,11 +29,11 @@ class SleepBubbles:
             window = tk.Toplevel(self.app.root)
             window.withdraw()
             window.overrideredirect(True)
-            window.attributes('-transparentcolor', '#ff00ff')
+            window.attributes('-transparentcolor', TRANSPARENT_COLOR)
             window.attributes('-alpha', 0)
-            canvas = tk.Canvas(window, width=32, height=32, bg='#ff00ff', bd=0, highlightthickness=0)
+            canvas = tk.Canvas(window, width=32, height=32, bg=TRANSPARENT_COLOR, bd=0, highlightthickness=0)
             canvas.pack()
-            oval = canvas.create_oval(12, 12, 20, 20, outline='#73a4a8', width=2)
+            oval = canvas.create_oval(12, 12, 20, 20, outline=MUTED, width=2)
             window.update_idletasks()
             native.no_activate(window)
             native.click_through(window)
@@ -77,7 +78,7 @@ class SazabiNotificationController:
         window = self.window = self.app.bubble = tk.Toplevel(self.app.root)
         window.withdraw()
         window.overrideredirect(True)
-        window.configure(bg='#254331')
+        window.configure(bg=BORDER)
         label = tk.Label(window, text=text[:180], bg=BG, fg=FG, font=('Consolas', 9),
                          wraplength=240, padx=12, pady=9, justify='left')
         label.pack(padx=1, pady=1)

@@ -74,7 +74,7 @@ def test_mock_never_builds_network_providers():
     with patch('research.web_source.TavilySearch', side_effect=AssertionError('network')):
         agent = build_agent(Config(mock=True, database_path=':memory:', search_api_key='secret'))
         assert 'mock' in agent.handle('/status')
-        assert 'desativada' in agent.handle('/ollama X')
+        assert 'desativada' in agent.handle('/groq X')
 
 
 def test_public_address_rejects_private_and_mixed_dns():
@@ -141,18 +141,18 @@ def test_explicit_negation_does_not_become_positive_signal():
     assert signals == []
 
 
-def test_ollama_uses_bounded_evidence_and_has_no_database_access():
-    from analysis.ai_provider import OllamaProvider
+def test_groq_uses_bounded_evidence_and_has_no_database_access():
+    from analysis.ai_provider import GroqProvider
     from database.models import Observation
     conn = Mock()
     conn.getresponse.return_value.status = 200
-    conn.getresponse.return_value.read.side_effect = [b'{"details":{"family":"test"}}', b'{"done":true,"done_reason":"stop","message":{"content":"Resumo"}}']
-    with patch('analysis.ai_provider.http.client.HTTPConnection', return_value=conn):
-        assert OllamaProvider('local').summarize([Observation('x' * 900, 'site', 'https://example.org')] * 20) == 'Resumo'
+    conn.getresponse.return_value.read.return_value = b'{"choices":[{"finish_reason":"stop","message":{"content":"Resumo"}}]}'
+    with patch('analysis.ai_provider.http.client.HTTPSConnection', return_value=conn):
+        assert GroqProvider('local', 'test-groq-key').summarize([Observation('x' * 900, 'site', 'https://example.org')] * 20) == 'Resumo'
     payload = json.loads(conn.request.call_args.args[2])
     evidence = json.loads(payload['messages'][1]['content'])
     assert len(evidence) == 8 and len(evidence[0]['text']) == 600
-    assert conn.close.call_count == 2
+    assert conn.close.call_count == 1
 
 
 def test_http_get_retries_are_bounded_and_post_is_not_retried():

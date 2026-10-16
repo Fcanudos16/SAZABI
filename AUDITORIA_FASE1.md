@@ -18,7 +18,7 @@ Data: 14/10/2026. Base auditada: commit `8a078e0`. Escopo: diagnóstico do códi
 
 1. Entrada/atalho Nova pesquisa → `CompanionApp.submit()` valida tamanho/NUL/comando, protege formato de chave Tavily e marca interface ocupada.
 2. `AgentWorker.submit()` recusa concorrência/fechamento; publica `queued` e entrega uma `CommandRequest`.
-3. `SazabiAgent.handle()` usa parser e registro; chama `SearchSkill.execute()` automaticamente, sem LAYLA ou Ollama.
+3. `SazabiAgent.handle()` usa parser e registro; chama `SearchSkill.execute()` automaticamente, sem LAYLA ou Groq.
 4. A skill interpreta critérios, usa região salva ou `DEFAULT_REGION`, ou pede somente a região. A resposta retoma a mesma skill.
 5. Examina fontes de descoberta E investigação. Tavily não possui o contrato de custo zero; ter uma chave não altera esse fato. Hoje não existe adaptador de produção gratuito compatível. Resultado real: `unconfigured`, nenhuma consulta, nenhuma pesquisa concluída fictícia. Isso é uma limitação funcional conhecida, não falha de reconhecimento do comando.
 6. Quando há fonte compatível injetada, o adaptador chama o pipeline do agente: criar pesquisa → descobrir → normalizar → deduplicar → investigar/cache → detectar sinais/hipóteses → persistir → formatar. Esse caminho foi exercitado com fixtures, não com um novo provedor de produção.
@@ -36,7 +36,7 @@ Falhas de fonte são capturadas; pesquisas podem terminar `failed`/`partial` e p
 
 ## 3. Integração `/ai` / LAYLA
 
-`/ai [texto]` retorna ação `open_ai` e rascunho. No desktop abre a janela e tenta conectar; NÃO envia automaticamente o rascunho. O usuário clica Enviar. Em CLI/Telegram, a resposta orienta usar o desktop, sem fingir uma resposta da LAYLA. `/ollama` é outro comando, de interpretação local opcional de evidências.
+`/ai [texto]` retorna ação `open_ai` e rascunho. No desktop abre a janela e tenta conectar; NÃO envia automaticamente o rascunho. O usuário clica Enviar. Em CLI/Telegram, a resposta orienta usar o desktop, sem fingir uma resposta da LAYLA. `/groq` é outro comando, de interpretação opcional de evidências pela API Groq.
 
 O bridge aceita somente localhost/127.0.0.1/::1, sem credenciais na URL ou caminhos adicionais. Obtém CSRF em GET `/`, valida acesso em GET `/api/configuracoes`, envia POST `/enviar` e inicia nova sessão em POST `/novo_chat`. Cookie/CSRF ficam no backend. São tratados autenticação, STANDBY, limite, timeout, JSON/resposta inválida e fechamento. Não executa ações retornadas pela LAYLA.
 
@@ -46,7 +46,7 @@ Verificações: transporte HTTP real contra servidor local sintético; terminal 
 
 | Gravidade | Evidência e impacto | Tratamento |
 |---|---|---|
-| Alta | `/forget Empresa` → `/ai` ou `/ollama` → `sim` ainda apagava a empresa. Confirmação antiga sobrevivia ao novo comando. Duas regressões reproduziram a exclusão. | Corrigido: comandos explícitos dessas rotas encerram a pergunta/confirmação anterior. |
+| Alta | `/forget Empresa` → `/ai` ou `/groq` → `sim` ainda apagava a empresa. Confirmação antiga sobrevivia ao novo comando. Duas regressões reproduziram a exclusão. | Corrigido: comandos explícitos dessas rotas encerram a pergunta/confirmação anterior. |
 | Alta | Logger filtrava apenas mensagem; exceções eram formatadas depois. Uma chave Tavily sintética isolada e token sintético no traceback foram gravados sem máscara. | Corrigido: máscara nos padrões de credenciais e na saída final do formatter, incluindo traceback. Não é alegação de vazamento real encontrado. |
 | Média | Duas empresas homônimas com domínios diferentes e cidades desconhecidas eram consideradas a mesma empresa, pois vazio era igual a vazio. | Corrigido: comparação por nome/endereço exige cidade conhecida; domínio/telefone continuam válidos. Não desfaz automaticamente fusões antigas. |
 | Média, limitação aberta | `/search` não possui fonte gratuita de produção; especificação de prospecção está parcial. | Mantido bloqueio explícito. Implementar provedor/regras seria fase de implementação, fora desta auditoria. |
@@ -68,7 +68,7 @@ Não foram encontradas chamadas de execução de shell/eval/exec no código de a
 
 | Arquivo | Motivo |
 |---|---|
-| `core/agent.py` | Invalidar confirmação anterior ao despachar `/ai`, outra skill registrada ou `/ollama`. |
+| `core/agent.py` | Invalidar confirmação anterior ao despachar `/ai`, outra skill registrada ou `/groq`. |
 | `utils/deduplication.py` | Não usar localização desconhecida como prova de identidade. |
 | `utils/logger.py` | Mascarar mensagens/tracebacks e fechar handlers substituídos. |
 | `core/reports.py` | Ajuda fiel às rotas de pesquisa e ao rascunho de IA. |
@@ -86,7 +86,7 @@ Não foram encontradas chamadas de execução de shell/eval/exec no código de a
 - `python tests/native_audit_check.py`: **PASS**. Tk e worker reais; busca duplicada recusada, `unconfigured` mostrado, zero chamadas ao transporte externo; `/ai` preserva rascunho, envia uma vez, mostra resposta simulada e reinicia a sessão sem alterar resultado da pesquisa.
 - Roteiro completo `python tests/native_desktop_check.py --screenshots`: cenário `run(False)` **PASS** (poses, arraste/pouso, menus, configurações, métricas reais e encerramento); cenário `run(True)` **FAIL** em `tests/native_desktop_check.py:258`, `Completion stole focus`. A comparação usa o foreground global do Windows; não estabelece sozinha qual janela ganhou foco ou se houve interferência externa. Não foi alterada a UI nem relaxada a asserção sem causa comprovada. Resultado global do roteiro: **não aprovado**. Requer reprodução isolada.
 - Sondagem LAYLA real de leitura: **disconnected**, sem envio de mensagem.
-- Nenhuma busca autenticada Tavily, consumo de créditos, pesquisa comercial real ou teste de Ollama real foi realizado nesta fase.
+- Nenhuma busca autenticada Tavily, consumo de créditos, pesquisa comercial real ou teste de Groq real foi realizado nesta fase.
 - `git diff --check`: sem erros de whitespace.
 
 ## 8. Recomendações para a próxima fase

@@ -11,7 +11,8 @@ from queue import Empty
 from core.bootstrap import build_agent
 from core.worker import AgentWorker
 from ui.sprites import SpriteAtlas, ASSETS, TRANSPARENT_COLOR
-from ui.terminal import ResultTerminal, BG, FG, FONT, SHELL_BG, ACCENT
+from ui.terminal import ResultTerminal
+from ui.theme import BG, FG, FONT, SHELL_BG, ACCENT, install
 from ui import native
 from ui.motion import offset
 from ui.behavior import SazabiAnimationController, SazabiDragController, validate_settings
@@ -33,9 +34,12 @@ class CompanionApp:
     def __init__(self, root, config, factory=build_agent):
         self.root, self.config = root, config
         root.withdraw()
+        install(root)
         self.busy, self.ready, self.failed, self.closing = True, False, False, False
         self.terminal, self.preferences, self.bubble = None, None, None
         self.system_monitor = None
+        self.countdown = None
+        self.research_timer = None
         self.ai_terminal = None
         self.menu, self.menu_action_job = None, None
         self.poll_job, self.idle_job = None, None
@@ -396,6 +400,22 @@ class CompanionApp:
             self.system_monitor = SystemMonitorWindow(self)
         self.system_monitor.show()
 
+    def open_countdown(self):
+        self.touch()
+        from ui.countdown.window import CountdownWindow
+        if self.countdown is None:
+            self.countdown = CountdownWindow(self.root)
+        self.countdown.show()
+
+    def start_research_timer(self):
+        terminal = self.get_terminal()
+        self.research_timer = terminal.research_timer
+        self.research_timer.start_research()
+
+    def finish_research_timer(self, status):
+        if self.research_timer is not None:
+            self.research_timer.finish_research(status)
+
     def context_menu(self, event):
         if self.wake_gate(lambda: self.context_menu(event)):
             return
@@ -408,7 +428,7 @@ class CompanionApp:
         self.menu = menu
         menu.add_command(label='Abrir / fechar terminal', command=lambda: self.menu_action(self.menu_toggle_terminal))
         menu.add_command(label='Nova pesquisa', command=lambda: self.menu_action(self.open_search))
-        menu.add_command(label='Configuração · Tavily / Ollama', command=lambda: self.menu_action(self.open_settings))
+        menu.add_command(label='Countdown', command=lambda: self.menu_action(self.open_countdown))
         menu.add_command(label='Monitor do sistema', command=lambda: self.menu_action(self.open_system_monitor))
         menu.add_command(label='Última pesquisa', command=lambda: self.menu_action(self.show_last_result))
         menu.add_command(label='Perfil comercial', command=lambda: self.menu_action(self.open_profile))
@@ -489,7 +509,7 @@ class CompanionApp:
             return
         terminal.entry.delete(0, 'end')
         if re.search(r'\btvly-[A-Za-z0-9_-]+', text):
-            self.notify('Informe a chave somente em Conexões.')
+            self.notify('Configure credenciais somente no .env e reinicie.')
             return
         if text.lower() in ('sair', '/exit', '/quit', '/sair'):
             self.close()
@@ -536,6 +556,7 @@ class CompanionApp:
     def activity(self, data):
         kind = data['kind']
         if kind=='SEARCH_STARTED':
+            self.start_research_timer()
             self.active_research=True
             self.get_terminal().cancel.configure(state='disabled' if self.cancel_requested else 'normal')
         if kind == 'SKILL_STATE':
@@ -573,6 +594,7 @@ class CompanionApp:
                 elif kind == 'activity':
                     self.activity(value)
                 elif kind == 'command_result':
+                    self.finish_research_timer(value.get('status', 'failed'))
                     self.set_busy(False)
                     if value.get('data', {}).get('action') == 'open_ai':
                         self.set_state('IDLE')
@@ -589,6 +611,7 @@ class CompanionApp:
                         self.notify(f"Execução #{self.get_terminal().execution_number} · {self.get_terminal().status.get()}. Clique para consultar.")
                         self.idle_job = self.root.after(1200, self.to_idle)
                 elif kind == 'reply':
+                    self.finish_research_timer('failed' if self.operation_failed else 'completed')
                     self.get_terminal().append(value + '\n')
                     self.set_busy(False)
                     self.get_terminal().status.set('Não concluído' if self.operation_failed else 'Resposta disponível')
@@ -596,7 +619,7 @@ class CompanionApp:
                     if self.active_research: self.get_terminal().remember_result()
                     self.notify(f"Execução #{self.get_terminal().execution_number} · "+(self.notice or 'Resposta disponível. Clique para consultar.'))
                     self.idle_job = self.root.after(1200, self.to_idle)
-                elif kind in ('connected', 'connection_error', 'ollama_models', 'ollama_ready', 'ollama_error'):
+                elif kind in ('connected', 'connection_error', 'groq_models', 'groq_ready', 'groq_error'):
                     self.set_busy(False)
                     if self.preferences and self.preferences.window.winfo_exists():
                         self.preferences.event(kind, value)
@@ -604,11 +627,13 @@ class CompanionApp:
                     if kind.endswith('error'):
                         self.notify(value)
                 elif kind == 'error':
+                    self.finish_research_timer('failed')
                     self.failed = True
                     self.set_busy(False)
                     self.get_terminal().append(value, 'error')
                     self.notify(value)
                 elif kind == 'closed':
+                    self.finish_research_timer('closed')
                     if self.closing:
                         self.root.destroy()
                         return
@@ -635,6 +660,10 @@ class CompanionApp:
             return
         self._save()
         self.closing = True
+        if self.terminal:
+            self.terminal.shutdown()
+        for timer in (self.countdown, self.research_timer):
+            if timer: timer.close()
         for attr in ('idle_job','response_job','wake_job','menu_action_job'):
             job=getattr(self,attr)
             if job: self.root.after_cancel(job); setattr(self,attr,None)
@@ -660,6 +689,10 @@ class CompanionApp:
 
     def _destroyed(self, event):
         if event.widget is self.root:
+            if self.terminal:
+                self.terminal.shutdown()
+            for timer in (self.countdown, self.research_timer):
+                if timer: timer.close()
             if self.ai_terminal:
                 self.ai_terminal.close()
             if self.system_monitor:

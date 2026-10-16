@@ -32,7 +32,8 @@ class Config:
     telegram_token: str = field(default='', repr=False)
     telegram_allowed_ids: tuple = ()
     ai_provider: str = 'none'
-    ollama_model: str = ''
+    groq_model: str = 'llama-3.3-70b-versatile'
+    groq_api_key: str = field(default='', repr=False)
     session_scope: str = ''
     commercial_profile_path: str = str(Path(__file__).resolve().parents[1] / 'commercial_profile.json')
     layla_url: str = 'http://127.0.0.1:5000'
@@ -109,7 +110,8 @@ def load_config(env_file: str = ".env", services_file: str = "services.yaml",
                   search_limit=search_limit,
                   telegram_token=get('TELEGRAM_BOT_TOKEN', ''),
                   telegram_allowed_ids=allowed_ids,
-                  ai_provider=get('AI_PROVIDER', 'none'), ollama_model=get('OLLAMA_MODEL', ''),
+                  ai_provider=get('AI_PROVIDER', 'none'), groq_model=get('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+                  groq_api_key=get('GROQ_API_KEY', ''),
                   commercial_profile_path=str((Path(env_file).resolve().parent / get('COMMERCIAL_PROFILE_PATH', str(Path(__file__).resolve().parents[1] / 'commercial_profile.json'))).resolve()),
                   layla_url=get('LAYLA_URL', 'http://127.0.0.1:5000'),
                   layla_session_cookie=get('LAYLA_SESSION_COOKIE', ''))

@@ -49,12 +49,12 @@ def connect(agent, key):
     return usage
 
 
-def configure_ollama(agent, model):
-    from analysis.ai_provider import OllamaProvider
+def configure_groq(agent, model):
+    from analysis.ai_provider import GroqProvider
     if model:
-        OllamaProvider(model).check_model()
-    values = {'AI_PROVIDER': 'ollama' if model else 'none', 'OLLAMA_MODEL': model}
+        GroqProvider(model, agent.config.groq_api_key).check_model()
+    values = {'AI_PROVIDER': 'groq' if model else 'none', 'GROQ_MODEL': model}
     save_values(agent.config.env_file, values)
     os.environ.update(values)
     agent.config.ai_provider = values['AI_PROVIDER']
-    agent.config.ollama_model = model
+    agent.config.groq_model = model

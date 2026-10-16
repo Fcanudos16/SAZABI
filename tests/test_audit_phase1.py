@@ -6,7 +6,7 @@ from utils.deduplication import is_same_company
 from utils.logger import setup_logging
 
 
-@pytest.mark.parametrize('command', ['/ai', '/ollama Oficina Silva'])
+@pytest.mark.parametrize('command', ['/ai', '/groq Oficina Silva'])
 def test_new_command_cancels_stale_delete_confirmation(agent, command):
     agent.handle('investigue Oficina Silva')
     agent.handle('/forget Oficina Silva')

@@ -3,15 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from ui import native
 
-BG, FG, MUTED, BORDER = '#080d0a', '#8fdfa7', '#72937b', '#254331'
-FONT = ('Consolas', 10)
-SHELL_BG, ACCENT = '#100b0d', '#702638'
-
-
-def button(parent, text, command):
-    return tk.Button(parent, text=text, command=command, bg=BG, fg=FG, activebackground=BORDER,
-                     activeforeground='#c9fbd5', font=FONT, relief='flat', bd=0, padx=9, pady=5,
-                     highlightthickness=1, highlightbackground=BORDER, takefocus=True)
+from ui.theme import BG, FG, MUTED, BORDER, FONT, BRIGHT, button, draggable
 
 
 class ResultTerminal:
@@ -24,12 +16,15 @@ class ResultTerminal:
         self.window.configure(bg=BORDER)
         self.window.resizable(False, False)
         self.visible, self.focus_seen = False, False
+        self.focus_job = None
         body = self.body = tk.Frame(self.window, bg=BG)
         body.pack(fill='both', expand=True, padx=1, pady=1)
         header = tk.Frame(body, bg=BG)
         header.pack(fill='x', padx=12, pady=(8, 4))
         self.heading=tk.StringVar(value='SAZABI / TERMINAL')
-        tk.Label(header, textvariable=self.heading, bg=BG, fg=FG, font=('Consolas', 11, 'bold')).pack(side='left')
+        title = tk.Label(header, textvariable=self.heading, bg=BG, fg=FG, font=('Consolas', 11, 'bold'))
+        title.pack(side='left')
+        draggable(self.window, header, title)
         button(header, '×', self.hide).pack(side='right')
         actions = tk.Frame(body, bg=BG)
         actions.pack(fill='x', padx=12, pady=(0, 6))
@@ -51,16 +46,10 @@ class ResultTerminal:
         self.entry.bind('<Return>', self.enter)
         self.send = button(composer, 'Enviar', app.submit)
         self.send.pack(side='right', padx=(5, 0))
-        content = tk.Frame(body, bg=BG)
+        from ui.countdown.embedded import ResearchTimer
+        self.research_timer = ResearchTimer(self)
+        content = self.content = tk.Frame(body, bg=BG)
         content.pack(fill='both', expand=True, padx=12, pady=5)
-        # Native Windows themes ignore scrollbar colors; use a dedicated clam style.
-        style = ttk.Style(self.window)
-        style.theme_use('clam')
-        style.configure('Sazabi.Vertical.TScrollbar', background=BORDER, troughcolor=BG,
-                        bordercolor=BG, lightcolor=BORDER, darkcolor=BORDER,
-                        arrowcolor=FG, width=12, arrowsize=12)
-        style.map('Sazabi.Vertical.TScrollbar', background=[('pressed', '#659f76'), ('active', '#3e7050')],
-                  lightcolor=[('active', '#3e7050')], darkcolor=[('active', '#3e7050')])
         scrollbar = self.scrollbar = ttk.Scrollbar(content, orient='vertical', style='Sazabi.Vertical.TScrollbar')
         scrollbar.pack(side='right', fill='y')
         self.output = tk.Text(content, bg=BG, fg=FG, font=FONT, relief='flat', wrap='word',
@@ -69,8 +58,8 @@ class ResultTerminal:
         self.output.pack(fill='both', expand=True)
         scrollbar.configure(command=self.output.yview)
         self.output.tag_configure('event', foreground=MUTED)
-        self.output.tag_configure('user', foreground='#c9fbd5')
-        self.output.tag_configure('error', foreground='#edb58b')
+        self.output.tag_configure('user', foreground=BRIGHT)
+        self.output.tag_configure('error', foreground=BRIGHT)
         self.window.protocol('WM_DELETE_WINDOW', self.hide)
         self.window.bind('<Escape>', lambda event: self.hide())
         self.window.bind('<FocusIn>', lambda event: setattr(self, 'focus_seen', True), add='+')
@@ -81,7 +70,7 @@ class ResultTerminal:
         self.execution_number=0
         self.current_query=''
         self.last_result=None
-        self.append('Clique direito no mascote → Configuração para Tavily/Ollama.\n/search exige uma fonte gratuita; /research usa Tavily (créditos).\n/ai abre a LAYLA; o texto é um rascunho até você enviar.\n', 'event')
+        self.append('Configurações de APIs e Groq: edite o .env e reinicie.\n/search e /research usam Tavily (créditos).\n/ai abre a LAYLA; o texto é um rascunho até você enviar.\n', 'event')
 
     def enter(self, event=None):
         if self.autocomplete.visible:
@@ -130,9 +119,12 @@ class ResultTerminal:
 
     def _focus_out(self, event):
         if self.visible:
-            self.window.after(100, self.check_focus)
+            if self.focus_job:
+                self.app.root.after_cancel(self.focus_job)
+            self.focus_job = self.app.root.after(100, self.check_focus)
 
     def check_focus(self):
+        self.focus_job = None
         if self.visible and self.focus_seen and not native.is_foreground(self.window):
             self.hide()
 
@@ -161,9 +153,18 @@ class ResultTerminal:
         self.entry.focus_force()  # Only a deliberate user click opens/focuses this console.
 
     def hide(self):
+        if self.focus_job:
+            self.app.root.after_cancel(self.focus_job)
+            self.focus_job = None
         self.visible = False
         self.autocomplete.hide()
         self.window.withdraw()
+
+    def shutdown(self):
+        if self.focus_job:
+            self.app.root.after_cancel(self.focus_job)
+            self.focus_job = None
+        self.research_timer.close()
 
     def busy(self, busy):
         self.cancel.configure(state='normal' if busy and self.app.active_research and not (self.app.closing or self.app.failed or self.app.cancel_requested) else 'disabled')

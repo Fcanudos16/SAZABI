@@ -1,6 +1,6 @@
 # SAZABI — inteligência comercial local
 
-Mascote de desktop com pesquisa legada pela **Tavily** e Search Skill com política de custo zero (veja a limitação abaixo), que identifica empresas a partir dos próprios sites e organiza evidências e possíveis oportunidades em SQLite. Ao iniciar, aparece somente o personagem 2D da arte original do usuário. Não abre dashboard, navegador, servidor ou porta web.
+Mascote de desktop com pesquisa pela **Tavily**, autorizada também para `/search` com uso de créditos, que identifica empresas a partir dos próprios sites e organiza evidências e possíveis oportunidades em SQLite. Ao iniciar, aparece somente o personagem 2D da arte original do usuário. Não abre dashboard, navegador, servidor ou porta web.
 
 **O uso normal não carrega empresas fictícias.** A base começa vazia. Dados sintéticos existem apenas em `tests/`, para testes isolados; o antigo comando `--mock` foi removido.
 
@@ -19,10 +19,12 @@ python main.py
 
 No Windows, abra `iniciar_sazabi.cmd` para iniciar com `pythonw`, sem manter um console aberto. Se houver um ambiente `.venv`, o iniciador usa esse Python. `iniciar_sazabi.pyw` também pode ser aberto diretamente quando arquivos `.pyw` estão associados ao Python.
 
-1. Clique com o botão direito no **mascote → Configuração · Tavily / Ollama**.
-2. Cole sua chave obtida no [painel da Tavily](https://app.tavily.com/).
-3. Clique em **Salvar e conectar**. O SAZABI valida a chave no endpoint de uso da conta, salva no `.env` local e habilita a pesquisa legada sem reiniciar. Isso não habilita `/search`, que exige custo zero.
-4. Clique no mascote para abrir o terminal e envie, por exemplo, `procure clínicas em Campinas`.
+1. Copie `.env.example` para `.env` **somente se ainda não existir**.
+2. Edite `SEARCH_API_KEY` no `.env` privado e reinicie o SAZABI. Não há campo de credenciais na interface.
+3. Clique no mascote e envie `/research clínicas em Campinas`. `/search` também usa Tavily e consome créditos da conta.
+4. Para Groq, configure `AI_PROVIDER=groq`, `GROQ_API_KEY` e `GROQ_MODEL` no `.env`. A janela de configuração não é disponibilizada na interface.
+
+O tema e o comportamento das janelas estão documentados em [ATUALIZACAO_DESKTOP.md](ATUALIZACAO_DESKTOP.md).
 
 ### Usar o mascote
 
@@ -30,7 +32,7 @@ No Windows, abra `iniciar_sazabi.cmd` para iniciar com `pythonw`, sem manter um 
 - **Clique** para abrir ou fechar o terminal preto e verde, próximo ao personagem (até 620 × 440 px).
 - **Duplo clique** mantém o terminal aberto. **Último** recupera a última tentativa de pesquisa; cada comando tem uma saída atual separada.
 - **Escape, × ou clique fora** fecham apenas o terminal. A pesquisa continua em segundo plano.
-- **Clique direito** dá acesso a nova pesquisa, configuração, Monitor do sistema, Sempre no topo e Encerrar SAZABI.
+- **Clique direito** dá acesso a nova pesquisa, Monitor do sistema, Sempre no topo e Encerrar SAZABI.
 - Ao terminar, a pose muda e um pequeno aviso aparece por 5,5 segundos. Os resultados não são abertos automaticamente e o foco de outro aplicativo é preservado.
 - A posição e as preferências do mascote ficam em `data/companion.json`, junto à pasta do banco configurado.
 
@@ -46,7 +48,7 @@ Sem chave, a janela, o histórico, a ajuda e os dados já salvos continuam dispo
 
 A validação da chave não executa pesquisa. Cada busca usa Tavily Search com `search_depth=basic` e `auto_parameters=false`. Limites, saldo e cobrança são os da sua conta Tavily; consulte o painel do provedor.
 
-Alternativamente, copie `.env.example` para `.env` e preencha `SEARCH_API_KEY`. Variáveis do ambiente têm prioridade na inicialização; salvar pela janela atualiza também a configuração do processo atual. Se você definiu uma chave global no Windows, mantenha-a consistente com o `.env` nas próximas execuções.
+`core/config.py` centraliza a leitura do `.env` e das variáveis de ambiente (estas têm prioridade). Após editar credenciais, reinicie. Nunca versione o `.env`.
 
 ## O que a pesquisa entrega
 
@@ -65,7 +67,7 @@ Sem API: `/profile` configura capacidades reais; `/qualify ID` avalia fontes sal
 
 | Ação | Exemplo |
 |---|---|
-| Search Skill (exige adaptador gratuito; ainda indisponível) | `/search clínicas em Campinas` |
+| Search Skill (Tavily; usa créditos) | `/search clínicas em Campinas` |
 | Pesquisa legada Tavily (consome créditos da conta) | `/research clínicas em Campinas` |
 | Investigar empresa | `/investigate Nome da empresa` |
 | Investigar site | `/investigate https://site-oficial.example` — substitua pelo site real |
@@ -101,19 +103,25 @@ python main.py --backup
 | `LOG_LEVEL` / `LOG_FILE` | `INFO` / `logs/sazabi.log` |
 | `TELEGRAM_BOT_TOKEN` | Token para o modo opcional `--telegram` |
 | `TELEGRAM_ALLOWED_USER_IDS` | IDs autorizados para o Telegram |
-| `AI_PROVIDER` / `OLLAMA_MODEL` | `none` por padrão; `ollama` habilita `/ollama Nome` |
+| `AI_PROVIDER` / `GROQ_MODEL` / `GROQ_API_KEY` | `none` por padrão; `groq` habilita `/groq Nome` |
 
-`services.yaml` define os serviços oferecidos pela sua software house. IA não é necessária para a pesquisa e a análise por regras. Telegram e Ollama são opcionais; veja [OPERACAO.md](OPERACAO.md).
+`services.yaml` define os serviços oferecidos pela sua software house. IA não é necessária para a pesquisa e a análise por regras. Telegram e Groq são opcionais; veja [OPERACAO.md](OPERACAO.md).
 
-### Interpretação com Ollama local
+### Interpretação com Groq
 
-Instale e abra o [Ollama](https://ollama.com/download), com um modelo de conversação baixado para seu computador. Clique direito no mascote → **Configuração**, e na seção Ollama clique em **Atualizar**, selecione um modelo e clique em **Ativar**. A escolha é salva no `.env` e passa a valer sem reiniciar. **Desativar** mantém a pesquisa e os relatórios por regras disponíveis.
+Configure no arquivo privado `.env` e reinicie:
 
-Depois de investigar uma empresa, envie `/ollama Nome da empresa`, ou `/ollama` para a empresa selecionada anteriormente. O modelo recebe até oito trechos com URL e data, e produz uma interpretação separada em fatos, hipóteses e limitações. A resposta não é salva como evidência e não altera cadastro, score ou oportunidades. Não há acesso a ferramentas ou envio automático de contatos.
+```dotenv
+AI_PROVIDER=groq
+GROQ_API_KEY=sua_chave_groq
+GROQ_MODEL=llama-3.3-70b-versatile
+```
 
-A conexão é fixa em `127.0.0.1:11434`. Modelos de nuvem são recusados; não exige chave de API para a IA local. Se o serviço não estiver disponível, a configuração orienta a abrir o Ollama ou executar `ollama serve`. A geração aguarda até 120 segundos por operação de rede; o primeiro carregamento depende do hardware e do modelo.
+Use `/groq Nome da empresa` ou `/groq` para a empresa selecionada. `/ai` continua abrindo a LAYLA.
 
-Diagnóstico sem baixar modelos: `python tests/ollama_local_check.py`. A validação da configuração verifica a presença e o tipo do modelo; a primeira execução de `/ollama` verifica a geração efetiva.
+A interpretação envia à API HTTPS do Groq até oito trechos de 600 caracteres com URL e data. Depende de internet, credencial e limites/custos da conta. A resposta não altera evidências, cadastro, score ou histórico. Respostas incompletas, recusadas ou inválidas são rejeitadas. `AI_PROVIDER=none` desativa a interpretação.
+
+Diagnóstico opcional de conexão: `python tests/groq_connection_check.py`. Referência: [API Groq](https://console.groq.com/docs/api-reference).
 
 ## Testes e limites
 
@@ -124,7 +132,7 @@ python tests/native_desktop_check.py
 python tests/public_network_check.py
 ```
 
-Os testes de integração usam respostas controladas e bases temporárias. O teste de rede separado consulta uma página pública real e verifica que a Tavily recusa acesso sem autenticação. Ele **não valida uma busca autenticada**. Para essa verificação, conecte sua chave na janela e realize uma pesquisa.
+Os testes de integração usam respostas controladas e bases temporárias. O teste de rede separado consulta uma página pública real e verifica que a Tavily recusa acesso sem autenticação. Ele **não valida uma busca autenticada**. Para essa verificação, configure sua chave no `.env` e reinicie e realize uma pesquisa.
 
 Sites podem bloquear coleta, exigir JavaScript ou não publicar identidade suficiente. Redirecionamentos são limitados e cada destino passa pela validação de endereço público; `robots.txt` é respeitado. Não há contorno de CAPTCHA/login. Detalhes em [OPERACAO.md](OPERACAO.md).
 
@@ -157,17 +165,17 @@ O mascote usa animações lentas e discretas permanentemente; não há opção d
 
 A caixa do SAZABI mantém 620 × 440 pixels (ou o limite da área útil da tela). Digitar `/` abre sugestões locais sobre a área de resultados; setas selecionam, Tab/Enter completam e Escape fecha as sugestões.
 
-- `/search empresas de tecnologia em São Paulo`: aciona a Search Skill de custo zero. Sem adaptador gratuito autorizado, retorna configuração ausente, mesmo que exista chave Tavily. Veja a seção de estado da implementação ao final.
+- `/search empresas de tecnologia em São Paulo`: aciona a Search Skill com Tavily autorizado; exige `SEARCH_API_KEY` e usa créditos.
 - **Nova pesquisa**: executa uma consulta `/search ...` já preparada uma única vez. Sem consulta, prepara `/search ` para digitação.
 - **Cancelar**: disponível na Search Skill, pesquisa legada e investigação. Interrompe entre etapas/requisições; a chamada HTTP atual ainda pode aguardar seu timeout. Dados já gravados são preservados e a execução fica marcada como cancelada.
 - `/ai`: abre exclusivamente o **SAZABI AI TERMINAL**. `/ai texto` preenche um rascunho, sem enviá-lo automaticamente.
-- `/ollama Nome da empresa`: mantém a interpretação local opcional anterior. O antigo `/ai` do Ollama foi renomeado para liberar `/ai` para a LAYLA.
+- `/groq Nome da empresa`: interpreta evidências com a API Groq.
 
 ### Configurar e estender a Search Skill
 
 `core/commands/parser.py` separa comando e argumentos; `registry.py` contém metadados públicos; `router.py` encaminha para Skills ou ações da interface. A pesquisa não está no parser.
 
-`skills/search/skill.py` implementa `execute(query, context)` e adapta os serviços existentes do agente. `skills/search/config.json` controla `enabled` e `timeout_seconds` (5–600 segundos, limite cooperativo entre etapas/requisições). Sem fonte gratuita autorizada ou configuração válida, a resposta é `unconfigured`, sem resultados inventados. Uma chave Tavily não habilita esta skill. Não foram adicionados filtros ou mecanismos fictícios.
+`skills/search/skill.py` implementa `execute(query, context)` e adapta os serviços existentes do agente. `skills/search/config.json` controla `enabled` e `timeout_seconds` (5–600 segundos, limite cooperativo entre etapas/requisições). Sem fonte autorizada ou configuração válida, a resposta é `unconfigured`, sem resultados inventados. Tavily é permitido com `allow_tavily=true` e chave válida. Não foram adicionados filtros ou mecanismos fictícios.
 
 Cada Skill fornece `name`, `description`, `version`, `enabled`, `commands` e `execute`. Registre outra implementação com `agent.skills.register(skill)` e seu comando com `agent.command_router.registry.register(CommandDefinition(...))`. Para substituir a implementação de pesquisa, use `register(skill, replace=True)`; o parser e a UI permanecem iguais. Inclua novos comandos no registro padrão para aparecerem no autocomplete.
 
@@ -190,23 +198,29 @@ O terminal mostra estado verificado da conexão, processamento, histórico da se
 
 Validação de contrato: `tests/test_layla_bridge.py` usa um servidor HTTP isolado, com dados explicitamente de teste. Isso não comprova que uma instalação real da LAYLA está online ou que seu modelo está configurado.
 
-## Skill SAZABI Search: política de custo zero
+## Skill SAZABI Search: Tavily autorizado
 
-A especificação fornecida pelo usuário está preservada em `skills/search/SKILL.md`, vinculada ao comando `/search` por `SearchSkill.specification`.
+`/search` usa o pipeline existente de descoberta, investigação e persistência com Tavily. Configure `SEARCH_API_KEY` no `.env`; `skills/search/config.json` contém `allow_tavily: true`, autorizado pelo usuário. As consultas usam créditos da conta. `SEARCH_LIMIT` limita resultados; `timeout_seconds` mantém o cancelamento cooperativo. Para bloquear Tavily nesta skill, defina `allow_tavily: false`.
 
-**Mudança de comportamento:** `/search` não utiliza mais Tavily. Uma chave Tavily ou uma cota promocional não comprova custo zero. Antes de qualquer pesquisa ou enriquecimento, a skill exige adaptadores gratuitos autorizados. Nenhum adaptador de produção compatível está instalado nesta versão: o comando informa `unconfigured`, sem chamadas externas, sem criar uma pesquisa concluída e sem resultados artificiais. Os demais comandos legados continuam com sua configuração anterior; esta restrição se aplica à Search Skill.
+Sem argumentos, usa a região salva por `/set` ou `DEFAULT_REGION`. Sem região, pede a localidade. Sem fonte autorizada ou configuração válida, retorna `unconfigured`, sem inventar resultados. Fixtures são restritas ao modo de teste. Não chama LAYLA nem Groq durante a pesquisa.
 
-`/search` sem argumentos usa a região salva por `/set` ou `DEFAULT_REGION`. Quando ela falta, pede apenas a região e continua pela mesma skill ao receber a resposta. A skill não chama LAYLA ou Ollama.
-
-### Estado da implementação da especificação
-
-- Integrados: documento original, vínculo com `/search`, bloqueio de provedores com créditos/cobrança, verificação de descoberta e enriquecimento, região padrão e resposta de configuração ausente.
-- Pendente de implementação: adaptador gratuito autorizado, descoberta em duas passagens, nova pontuação 0–100, confiança e formato de leads descritos no documento, rotação de nichos. Os estágios comerciais locais foram implementados na fase 2. O pipeline anterior não deve ser confundido com a implementação desses critérios.
-- A marca `search_skill_cost_policy = 'zero_cost'` é um contrato de implementação do adaptador, não uma opção do `.env`. Só deve ser declarada após verificar o serviço, permissões e implementar os critérios pendentes acima. Não marque o adaptador Tavily como gratuito.
-- Fixtures sintéticas são aceitas exclusivamente em testes com `mock=True`; não habilitam pesquisas de produção.
+A especificação está em `skills/search/SKILL.md`. Descoberta em duas passagens e rotação de nichos continuam pendentes; conectar Tavily não implementa esses recursos.
 
 ## Gestão local de leads — fase 2
 
 Clique em **Leads** no terminal ou use `/leads`. A mesma base SQLite agora mantém estágios comerciais, observações, histórico de ações e fontes, arquivamento com confirmação e exportação selecionada para CSV/JSON. Exemplos: `/lead ID`, `/stage ID qualified`, `/note ID texto`, `/export csv ID1,ID2`.
 
-Consulte [FASE2_LEADS.md](FASE2_LEADS.md) para comandos, estrutura, migração, backup e recuperação. A migração é automática e preserva IDs e dados existentes. Isso não altera a limitação de provedor gratuito do `/search`.
+Consulte [FASE2_LEADS.md](FASE2_LEADS.md) para comandos, estrutura, migração, backup e recuperação. A migração é automática e preserva IDs e dados existentes. `/search` usa a configuração Tavily descrita acima.
+
+
+## Countdown e tempo de pesquisa
+
+O contador da pesquisa existe somente dentro do terminal de pesquisa. Aparece quando a busca começa, conta de zero e desaparece ao terminar, falhar, exceder o limite ou confirmar o cancelamento. Não tem janela separada, controles nem acesso pelo menu. Enquanto aguarda uma região, não aparece. Fechar o terminal oculta também o contador, sem interromper a pesquisa; reabrir o terminal durante a busca mostra o tempo decorrido.
+
+Para o timer manual: **clique direito no mascote → Countdown → SET**. Digite `cinco minutos` ou `5:00:00` para definir cinco minutos e depois `iniciar`. Também aceita `iniciar cinco minutos`, `set cinco minutos`, `um minuto e trinta segundos`, `meia hora`, `duas horas e meia` e durações numéricas como `90 segundos`.
+
+`M:SS:CC` significa **minutos:segundos:centésimos**, portanto `5:00:00` são cinco minutos. Durações digitadas sem verbo configuram o timer, sem iniciar automaticamente. São aceitos `start`/`iniciar`, `pause`/`pausar`, `resume`/`retomar`, `reset`/`reiniciar`, `stop`/`parar`/`zerar`, `top on`, `top off`, `clear`/`limpar`, `help`/`ajuda`, `exit`/`sair`. Não é possível alterar a duração durante a contagem sem pausar ou parar antes.
+
+O countdown manual mantém PIN, arraste, redimensionamento e alerta vermelho ao chegar a zero. Espaço inicia/pausa/retoma fora do campo de texto; Enter ou `/` abre o campo; Esc fecha o terminal do countdown ou dispensa o alerta. X e `exit` ocultam apenas o countdown manual; `stop` interrompe e zera. Encerrar o SAZABI encerra os timers. Ambos usam relógio monotônico e funcionam independentemente. Não restauram contagens após reiniciar o aplicativo.
+
+Testes: `python tests/native_countdown_check.py` verifica a interface real usando fontes simuladas e banco em memória. `tests/test_countdown_language.py` cobre as durações e os comandos em português.

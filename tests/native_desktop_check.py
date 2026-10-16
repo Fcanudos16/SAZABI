@@ -19,6 +19,7 @@ import tkinter as tk
 from core.config import Config
 from tests.factories import build_agent
 from desktop import DesktopApp
+from ui import native
 
 
 def screenshot(root, path):
@@ -363,15 +364,17 @@ def run(mock=False):
         assert app.terminal.visible and app.terminal.window.winfo_viewable()
         assert app.terminal.entry.get() == '/search '
         assert root.focus_get() == app.terminal.entry
-        choose('Configuração · Tavily / Ollama')
+        app.open_settings()  # Legacy component tested directly; not exposed in the menu.
+        tick(.5)
         assert app.preferences.window.winfo_viewable()
-        assert root.focus_get() == app.preferences.key
+        assert root.focus_get() == app.preferences.model
         original_preferences = app.preferences
-        app.preferences.window.iconify()
+        native.minimize(app.preferences.window)
         tick()
-        choose('Configuração · Tavily / Ollama')
+        app.open_settings()  # Legacy component tested directly; not exposed in the menu.
+        tick(.5)
         assert app.preferences is original_preferences and app.preferences.window.state() == 'normal'
-        assert root.focus_get() == app.preferences.key
+        assert root.focus_get() == app.preferences.model
         app.set_busy(True)
         choose('Nova pesquisa')
         assert app.terminal.visible and str(app.terminal.entry['state']) == 'disabled'
@@ -388,7 +391,7 @@ def run(mock=False):
         assert monitor.last_snapshot['disk']['total'] > 0
         assert monitor.close_button.winfo_rooty()+monitor.close_button.winfo_height() <= monitor.window.winfo_rooty()+monitor.window.winfo_height()
         capture(monitor.window, 'system-monitor.png')
-        monitor.window.iconify()
+        native.minimize(monitor.window)
         tick(.3)
         assert not monitor.running and not monitor.sampler.active
         choose('Monitor do sistema')
@@ -418,24 +421,20 @@ def run(mock=False):
         choose('Abrir / fechar terminal')
         assert not app.terminal.visible
         app.preferences.window.destroy()
-        choose('Configuração · Tavily / Ollama')
+        app.open_settings()  # Legacy component tested directly; not exposed in the menu.
+        tick(.5)
         assert app.preferences is not original_preferences and app.preferences.window.winfo_viewable()
         tick()
         preferences = app.preferences
-        preferences.key.insert(0, 'tvly-test-private-key')
-        with patch.dict(os.environ), patch('core.connection.TavilySearch.check_connection', return_value={'usage': 0, 'limit': 1000}):
-            preferences.connect()
+        assert not hasattr(preferences, 'key') and not hasattr(preferences, 'connect')
+        with patch('analysis.ai_provider.list_models', return_value=['test-model']):
+            preferences.groq('list')
             wait()
-        assert 'conectada' in preferences.status.get()
-        assert not preferences.key.get()
-        with patch('analysis.ai_provider.list_models', return_value=['test-local:1']):
-            preferences.ollama('list')
+        with patch.dict(os.environ), patch('analysis.ai_provider.GroqProvider.check_model'):
+            preferences.groq('activate')
             wait()
-        with patch.dict(os.environ), patch('analysis.ai_provider.OllamaProvider.check_model'):
-            preferences.ollama('activate')
-            wait()
-            assert app.config.ai_provider == 'ollama'
-            preferences.ollama('disable')
+            assert app.config.ai_provider == 'groq'
+            preferences.groq('disable')
             wait()
             assert app.config.ai_provider == 'none'
         capture(preferences.window, 'mascot-settings.png')
@@ -460,8 +459,7 @@ def run(mock=False):
         assert app.terminal.entry.get() == '/search '
         assert dimensions == (app.terminal.window.winfo_width(), app.terminal.window.winfo_height())
         app.terminal.entry.insert('end', 'clínicas em Campinas')
-        # The connection test above installed a synthetic Tavily credential.
-        # Intercept its search too: native tests must never call an external API.
+        # Native tests must never call an external API.
         with patch('research.web_source.TavilySearch.search', return_value=[]):
             with patch.object(app.worker, 'submit', wraps=app.worker.submit) as submit_search:
                 app.open_search()
@@ -470,7 +468,7 @@ def run(mock=False):
             wait()
         result = app.terminal.last_skill_result
         assert result['skill'] == 'search'
-        assert result['status'] == 'unconfigured'  # Tavily is not a zero-cost adapter
+        assert result['status'] == ('completed' if mock else 'unconfigured')  # Only the isolated fixture has a free adapter
         capture(app.terminal.window, 'slash-search.png')
         # Transport is separately tested against HTTP; this checks native session controls.
         with patch('integrations.layla.session.LaylaBridge') as bridge_factory:

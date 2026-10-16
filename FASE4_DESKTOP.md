@@ -1,3 +1,7 @@
+> Migração para Groq: configure `AI_PROVIDER=groq`, `GROQ_API_KEY` e `GROQ_MODEL=llama-3.3-70b-versatile` no `.env` e reinicie. `/groq` envia evidências à API Groq. Consulte o README para a configuração atual.
+
+> Registro da fase 4. A atualização posterior de tema e credenciais está em [ATUALIZACAO_DESKTOP.md](ATUALIZACAO_DESKTOP.md); substitui o visual vermelho e a edição de chaves na interface descritos aqui.
+
 # Fase 4 — desktop e confiabilidade
 
 Entrega de 15/10/2026. O SAZABI permanece um aplicativo nativo Windows com mascote, terminal compacto e SQLite local. Nenhum site, painel em tela cheia, novo serviço de monitoramento ou envio automático de mensagens foi introduzido.
@@ -63,7 +67,7 @@ Copie `.env.example` para `.env` somente se ainda não houver um arquivo privado
 | `SEARCH_API_KEY`, `SEARCH_LIMIT` | Pesquisa legada Tavily; limite de 1 a 20. Credenciais também podem ser salvas no campo mascarado das configurações. |
 | `CACHE_TTL_HOURS` | Reutilização das investigações; padrão de 24 horas. |
 | `COMMERCIAL_PROFILE_PATH` | Perfil comercial editável da fase 3. |
-| `AI_PROVIDER`, `OLLAMA_MODEL` | Interpretação opcional pelo Ollama local; `none` mantém desativada. |
+| `AI_PROVIDER`, `GROQ_MODEL`, `GROQ_API_KEY` | Interpretação opcional pelo Groq; `none` mantém desativada. |
 | `LAYLA_URL`, `LAYLA_SESSION_COOKIE` | Integração opcional com a LAYLA local e sessão autorizada, quando necessária. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS` | Apenas para o modo Telegram explicitamente iniciado, separado do desktop. |
 

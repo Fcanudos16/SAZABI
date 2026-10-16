@@ -1,3 +1,7 @@
+> Migração para Groq: configure `AI_PROVIDER=groq`, `GROQ_API_KEY` e `GROQ_MODEL=llama-3.3-70b-versatile` no `.env` e reinicie. `/groq` envia evidências à API Groq. Consulte o README para a configuração atual.
+
+> Atualização: o acesso à janela Configuração foi retirado do front. Configure APIs e Groq no `.env` e reinicie. O componente legado permanece interno, sem entrada no menu.
+
 # SAZABI — mascote primeiro, interface depois
 
 A experiência principal é um personagem 2D de desktop. A antiga interface de dashboard foi removida. Na inicialização aparecem somente a arte original e sua região de janela; não há home, navegador, terminal, menu ou balão permanente.
@@ -73,7 +77,7 @@ A barra lateral de rolagem usa trilho preto e controle verde escuro, com realce 
 
 Clique novamente no mascote, Escape, × ou perda de foco ocultam o terminal. Pesquisa e memória continuam ativas. A conclusão não abre o terminal: apenas atualiza a pose e, se as notificações estiverem habilitadas, mostra um balão de até 240 px de texto por 5,5 segundos. Entrada com fade e deslocamento de cinco pixels em 250 ms; saída com fade. Clicar no balão abre a saída atual correspondente. Cada comando inicia uma seção numerada; Último recupera a última tentativa de pesquisa da sessão. Controles ficam em duas linhas para acomodar fontes maiores.
 
-Configuração é uma janela opcional separada, acessível pelo menu do mascote. Mantém chave Tavily mascarada e seleção de Ollama local. Não substitui a experiência principal.
+Configuração é um componente interno, sem entrada no menu do mascote. Mantém seleção de Groq; credenciais são configuradas exclusivamente no `.env`, sem campos na interface. Não substitui a experiência principal.
 
 ## Camadas
 
@@ -91,7 +95,7 @@ Configuração é uma janela opcional separada, acessível pelo menu do mascote.
 | `ui/sprites.py` | leitura original, recortes e máscaras, sem regravar a arte |
 | `ui/native.py` | regiões, não ativação, posição e área útil no Windows |
 | `ui/terminal.py` | terminal secundário e histórico visual limitado |
-| `ui/preferences.py` | conexões Tavily/Ollama sob demanda |
+| `ui/preferences.py` | conexões Tavily/Groq sob demanda |
 | `system_monitor/` | coletores incorporados do System monitor e serviço local pausável |
 | `ui/system_monitor.py` | janela nativa de métricas reais, aberta pelo menu do mascote |
 
@@ -115,4 +119,8 @@ A máscara externa também é aplicada ao bitmap de apresentação por uma cor t
 
 O terminal principal mantém sua geometria original. As sugestões slash aparecem como sobreposição local, sem alterar o campo de entrada. `Nova pesquisa` aproveita uma consulta preparada; uma trava no worker impede submissões duplicadas. O botão Cancelar atua durante a Search Skill, pesquisa legada e investigação, de forma cooperativa. Resultados e limitações da validação final estão em `FASE4_DESKTOP.md`.
 
-`/ai` abre outra janela nativa, preta e verde, criada apenas quando solicitada. Histórico e processamento da LAYLA são independentes da pesquisa; sessão, CSRF e transporte ficam em `integrations/layla`. A UI recebe somente resultados públicos. Ollama permanece acessível por `/ollama`.
+`/ai` abre outra janela nativa, preta e verde, criada apenas quando solicitada. Histórico e processamento da LAYLA são independentes da pesquisa; sessão, CSRF e transporte ficam em `integrations/layla`. A UI recebe somente resultados públicos. Groq permanece acessível por `/groq`.
+
+## Tema compartilhado
+
+`ui/theme.py` define as cores, opções Tk, estilos ttk, botões e barras de título. Todas as janelas usam preto e verde, sem gradientes. As artes não são recoloridas. Configurações, LAYLA e monitor têm barras próprias com arraste, minimizar e fechar; reabra pelo menu do mascote. Consulte `ATUALIZACAO_DESKTOP.md`.
