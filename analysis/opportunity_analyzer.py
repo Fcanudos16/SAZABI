@@ -26,16 +26,17 @@ def _r(solution, services, primary, supporting=()):
 
 
 RULES: Sequence[HypothesisRule] = (
-    _r("sistema de agendamento online", ("sistemas web", "aplicativos", "automação"),
+    _r("possível integração entre ferramentas observadas", ("integrações",), {'digital_tools'}),
+    _r("sistema de agendamento online", ("sistemas web", "aplicativos", "aplicações", "automação"),
        {"scheduling"}, {"customer_service", "operational_complexity", "digital_gap", "manual_process", "hiring"}),
     _r("automação de atendimento (WhatsApp)", ("automação", "inteligência artificial", "integrações"),
        {"customer_service"}, {"scheduling", "manual_process", "operational_complexity"}),
-    _r("sistema de gestão centralizado", ("sistemas de gestão", "sistemas internos", "dashboards"),
+    _r("sistema de gestão centralizado", ("sistemas de gestão", "sistemas internos", "dashboards", "painéis", "relatórios"),
        {"multiple_locations", "operational_complexity"},
        {"growth", "new_unit", "hiring", "manual_process", "multiple_locations", "operational_complexity"}),
     _r("automação de processos internos", ("automação", "sistemas internos", "integrações"),
        {"manual_process"}, {"growth", "new_unit", "hiring", "operational_complexity"}),
-    _r("site / presença digital", ("sistemas web", "e-commerce"),
+    _r("site / presença digital", ("sites", "sistemas web", "e-commerce"),
        {"digital_gap"}, {"customer_service", "ecommerce"}),
     _r("e-commerce / loja virtual", ("e-commerce",),
        {"ecommerce"}, {"customer_service", "digital_gap"}),

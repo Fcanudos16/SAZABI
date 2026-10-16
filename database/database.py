@@ -164,12 +164,23 @@ class Database:
 
     def backup(self, directory=None) -> str:
         from datetime import datetime, timezone
+        import os
+        import time
         root = Path(directory) if directory else Path(self.path).parent / 'backups'
         root.mkdir(parents=True, exist_ok=True)
         stem = 'sazabi' if self.path == ':memory:' else Path(self.path).stem
         filename = root / (stem + '_' + datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f') + '.db')
-        with closing(sqlite3.connect(str(filename))) as target:
-            self.conn.backup(target)
-            if target.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
-                raise RuntimeError('Backup falhou na verificação de integridade')
+        temporary=filename.with_suffix('.pending')
+        try:
+            with closing(sqlite3.connect(str(temporary))) as target:
+                deadline=time.monotonic()+30
+                def progress(status,remaining,total):
+                    if time.monotonic()>deadline:raise TimeoutError('Backup excedeu 30 segundos.')
+                self.conn.backup(target,pages=128,progress=progress,sleep=.1)
+                if target.execute('PRAGMA integrity_check').fetchone()[0] != 'ok' or target.execute('PRAGMA foreign_key_check').fetchone():
+                    raise RuntimeError('Backup falhou na verificação de integridade')
+            os.chmod(temporary,0o600)
+            os.replace(temporary,filename)
+        finally:
+            if temporary.exists(): temporary.unlink()
         return str(filename)

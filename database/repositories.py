@@ -58,6 +58,11 @@ class CompanyRepository:
         return p.id
 
     def update(self, p: CompanyProfile) -> None:
+        row=self.db.query_one('SELECT manual_fields FROM companies WHERE id=?',(p.id,))
+        if row:
+            for field,entry in json.loads(row['manual_fields']).items():
+                if field in {'phone','segment','city','address','description'}:
+                    setattr(p,field,entry['value'])
         sets = ", ".join(f"{c}=?" for c in _COLS[1:])
         self.db.execute(f"UPDATE companies SET {sets} WHERE id=?", _values(p, now_iso())[1:] + (p.id,))
 
@@ -254,10 +259,10 @@ class RunRepository:
         started = started_at or now_iso()
         query = criteria.raw_query or "; ".join(criteria.describe())
         cur = self.db.execute(
-            "INSERT INTO research_runs (query, segment, city, state, size, need, silent, started_at, status) "
-            "VALUES (?,?,?,?,?,?,?,?,'running')",
+            "INSERT INTO research_runs (query, segment, city, state, size, need, silent, started_at, strategy_json, status) "
+            "VALUES (?,?,?,?,?,?,?,?,?,'running')",
             (query, criteria.segment, criteria.city, criteria.state, criteria.size, criteria.need,
-             int(criteria.silent), started))
+             int(criteria.silent), started,json.dumps(getattr(criteria,'strategy_context',{}),ensure_ascii=False)))
         return ResearchRun(id=cur.lastrowid, query=query, started_at=started, segment=criteria.segment,
                            city=criteria.city, state=criteria.state, size=criteria.size,
                            need=criteria.need, silent=criteria.silent)

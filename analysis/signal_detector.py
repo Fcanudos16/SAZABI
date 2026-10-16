@@ -40,11 +40,11 @@ RULES: Sequence[SignalRule] = (
     SignalRule("customer_service",
                r"atendimento.{0,40}whatsapp|whatsapp.{0,40}atendimento|orcamento\w*.{0,30}whatsapp|vendas?\s+(?:pelo|via|por)\s+whatsapp",
                "Atendimento aparentemente realizado via WhatsApp", "moderate"),
-    SignalRule("hiring", r"\bvagas?\b|estamos contratando|trabalhe conosco",
+    SignalRule("hiring", r"\bvagas?\s+(?:abertas|disponiveis|para)\b|estamos contratando",
                "Empresa divulga vagas (possível necessidade operacional)", "low"),
-    SignalRule("new_unit", r"nova unidade|abertura de (?:uma )?(?:nova )?unidade|inaugur\w+",
+    SignalRule("new_unit", r"(?:em breve|abriremos|inauguraremos).{0,40}(?:unidade|loja)|abertura de (?:uma )?nova unidade",
                "Possível expansão com nova unidade", "moderate"),
-    SignalRule("growth", r"expans\w+|cresc\w+|ampliou|ampliacao",
+    SignalRule("growth", r"estamos (?:em expansao|crescendo|ampliando)|plano de expansao",
                "Possível fase de crescimento", "moderate"),
     SignalRule("manual_process",
                r"planilhas?|\bpapel\b|preenchimento manual|presencialmente|documentos por e-?mail|controle manual",
@@ -61,6 +61,19 @@ RULES: Sequence[SignalRule] = (
 
 def _to_int(value: str) -> int:
     return int(value) if value.isdigit() else NUM_WORDS.get(value, 0)
+
+
+def existing_online_channels(observations):
+    found = set()
+    for observation in observations:
+        text = normalize_text(observation.text)
+        for kind, pattern in (
+            ('scheduling', r'(?:\b(?:oferece|possui|tem|acesse|use)\s+(?:nosso\s+)?|^sistema de\s+)agendamento online'),
+            ('ecommerce', r'\b(?:oferece|possui|tem|acesse|use)\s+(?:nossa\s+)?loja virtual')):
+            if any(not re.search(r'\b(?:nao|sem)\b[^.!?;]*$',text[max(0,m.start()-30):m.start()])
+                   for m in re.finditer(pattern,text)):
+                found.add(kind)
+    return found
 
 
 class SignalDetector:
@@ -101,4 +114,11 @@ class SignalDetector:
                                   description="Possível lacuna de presença digital",
                                   evidence="Site oficial não identificado nas fontes consultadas",
                                   source="Fontes consultadas", detected_at=now, confidence="low"))
-        return signals
+        existing = existing_online_channels(observations)
+        for obs in observations:
+            text=normalize_text(obs.text)
+            tools=[name for name in ('whatsapp','shopify','woocommerce','salesforce','hubspot','bling','tiny','omie')
+                   if re.search(r'\b'+name+r'\b',text)]
+            if len(tools)>=2 and re.search(r'\b(?:usamos|utilizamos|atendemos|vendemos|pedidos|atendimento)\b',text) and not re.search(r'\b(?:nao|sem)\b',text):
+                signals.append(Signal(company_id=profile.id,type='digital_tools',description='Ferramentas/canais citados: '+', '.join(tools)+'; integração atual desconhecida',evidence=obs.text,source=obs.source_name,source_url=obs.url,detected_at=now,confidence='low'))
+        return [signal for signal in signals if signal.type not in existing]

@@ -42,16 +42,30 @@ def main(argv=None) -> int:
     if not (args.cli or args.telegram or args.backup or args.command is not None):
         from desktop import run_desktop
         return run_desktop(config)
+    from database.recovery import research_lock, ResearchBusy
+    from types import SimpleNamespace
+    try:
+        with research_lock(SimpleNamespace(path=config.database_path),suffix='.session.lock'):
+            return run_cli(config,args)
+    except ResearchBusy:
+        print('Outra sessão usa este banco. Feche-a antes de continuar.')
+        return 1
+
+
+def run_cli(config,args):
     agent = build_agent(config)
 
     if args.backup:
         try:
-            print('Backup verificado: ' + agent.db.backup())
+            from core.maintenance import Maintenance
+            print('Backup verificado: ' + Maintenance(agent).backup())
         finally:
             agent.db.close()
         return 0
     if not config.mock and config.database_path != ':memory:':
-        agent.db.backup()
+        from core.maintenance import Maintenance
+        try: Maintenance(agent).tick(allow_refresh=False)
+        except Exception: print('Manutenção inicial falhou; consulte /health. Histórico disponível.')
     if args.telegram:
         from dataclasses import replace
         from notifications.telegram import TelegramAPI, TelegramBot

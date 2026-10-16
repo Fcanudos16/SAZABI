@@ -33,4 +33,7 @@ def default_registry():
     from core.commercial_commands import COMMANDS as COMMERCIAL
     for name, description in COMMERCIAL.items():
         registry.register(CommandDefinition(name, description, action='commercial'))
+    from core.maintenance_commands import COMMANDS as MAINTENANCE
+    for name,description in MAINTENANCE.items():
+        registry.register(CommandDefinition(name,description,action='maintenance'))
     return registry

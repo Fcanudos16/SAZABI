@@ -57,7 +57,7 @@ def test_migration_of_existing_database_preserves_data_and_backups(tmp_path):
     assert len(list((tmp_path/'backups').glob('*.db')))==1
     db.close()
     db=Database(str(path))
-    assert db.query_one('SELECT COUNT(*) n FROM schema_migrations')['n']==2
+    assert db.query_one('SELECT COUNT(*) n FROM schema_migrations')['n']==4
     assert db.query_one('SELECT COUNT(*) n FROM lead_events')['n']==1
     assert CompanyRepository(db).count()==1
     db.close()

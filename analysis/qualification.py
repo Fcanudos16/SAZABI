@@ -3,12 +3,12 @@ from datetime import timedelta
 import ipaddress
 import re
 from urllib.parse import urlsplit
-from analysis.signal_detector import SignalDetector
+from analysis.signal_detector import SignalDetector, existing_online_channels
 from analysis.opportunity_analyzer import OpportunityAnalyzer, RULES
 from utils.normalization import normalize_text
 from utils.timeutils import utcnow, parse_iso
 
-VERSION = 'commercial-1'
+VERSION = 'commercial-3'
 LABELS = {'high':'Alta', 'moderate':'Moderada', 'low':'Baixa', 'insufficient':'Dados insuficientes'}
 
 
@@ -28,7 +28,7 @@ def matches(value, options):
     return any(normalize_text(option) in value for option in options) if value else False
 
 
-def evaluate(company, observations, profile, now=None):
+def evaluate(company, observations, profile, now=None, strategy_context=None):
     now=now or utcnow()
     facts, usable, seen, gaps = [], [], set(), []
     for obs in observations:
@@ -50,15 +50,17 @@ def evaluate(company, observations, profile, now=None):
     signals=[s for s in signals if not (s.type in ('digital_gap','ecommerce') and
              re.search(r'(?:site|loja virtual) nao identificad',normalize_text(s.evidence)))]
     # Existing online channels contradict a claim that that channel is absent.
-    text=' '.join(normalize_text(o.text) for o in usable)
     contrary=[]
-    for pattern,types,label in [
-        (r'\b(?:oferece|possui|tem|acesse|use)\s+(?:nosso\s+)?agendamento online',{'scheduling'},'Fonte indica agendamento online existente.'),
-        (r'\b(?:oferece|possui|tem|acesse|use)\s+(?:nossa\s+)?loja virtual',{'ecommerce'},'Fonte indica loja virtual existente.')]:
-        positive=any(not re.search(r'\b(?:nao|sem)\b[^.!?;]*$',text[max(0,m.start()-30):m.start()]) for m in re.finditer(pattern,text))
-        if positive:
+    existing = existing_online_channels(usable)
+    for kind,label in [('scheduling','Fonte indica agendamento online existente.'),
+                       ('ecommerce','Fonte indica loja virtual existente.')]:
+        if kind in existing:
             contrary.append(label)
-            signals=[s for s in signals if s.type not in types and not (s.type=='digital_gap' and ('agendamento' in normalize_text(s.evidence) or 'loja virtual' in normalize_text(s.evidence)))]
+            feature = 'agendamento' if kind == 'scheduling' else 'loja virtual'
+            signals=[s for s in signals if s.type != kind and not (s.type=='digital_gap' and feature in normalize_text(s.evidence))]
+    from analysis.strategies import evidence_policy
+    signals,policy_reasons=evidence_policy(profile,company,signals,strategy_context)
+    contrary.extend(policy_reasons)
     hypotheses=OpportunityAnalyzer(profile['services']).analyze(company,signals)
     recommendations=[]
     relevant=set()
@@ -97,6 +99,12 @@ def evaluate(company, observations, profile, now=None):
     gaps.append('Orçamento, urgência, interesse, poder de decisão e necessidade ainda precisam ser validados.')
     if profile['technologies']:
         gaps.append('Validar requisitos técnicos frente às tecnologias configuradas; nenhuma stack do lead foi presumida.')
+    if profile.get('project_complexity'):
+        gaps.append('Complexidade aceitável: '+', '.join(profile['project_complexity'])+'. Escopo real precisa ser confirmado.')
+    if profile.get('automation_processes'):
+        gaps.append('Processos de interesse: '+', '.join(profile['automation_processes'])+'. Não são fatos sobre este lead.')
+    if profile.get('interesting_traits'):
+        gaps.append('Características desejadas: '+', '.join(profile['interesting_traits'])+'. Exigem confirmação individual.')
     score=sum(f['points'] for f in factors)
     cap=100; reason=''
     insufficient=not usable or not profile['services']
@@ -110,4 +118,5 @@ def evaluate(company, observations, profile, now=None):
     action='Validar as hipóteses e revisar um rascunho antes de qualquer contato.' if recommendations and not insufficient else 'Complementar fontes públicas e conferir o perfil antes de abordar.'
     return {'engine_version':VERSION,'company':{'id':company.id,'name':company.name,'segment':company.segment,'location':company.location},
             'score':score,'category':category,'factors':factors,'adjustments':adjustments,'negative_factors':contrary,
-            'facts':facts,'recommendations':recommendations,'gaps':gaps,'next_action':action,'profile':profile}
+            'facts':facts,'recommendations':recommendations,'gaps':gaps,'next_action':action,'profile':profile,
+            'strategy_context':strategy_context}

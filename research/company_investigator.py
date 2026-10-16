@@ -47,6 +47,9 @@ class CompanyInvestigator:
                 if refresh and hasattr(source, 'pages'):
                     source.pages.clear()
                 collected.extend(source.fetch_observations(profile))
+                warnings = getattr(source, 'errors', [])
+                if isinstance(warnings, list):
+                    self.errors.extend(source.name + ': ' + warning for warning in warnings)
             except Exception as error:
                 from skills.base import ExecutionStopped
                 if isinstance(error, ExecutionStopped):

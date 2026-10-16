@@ -61,6 +61,9 @@ class CompanyFinder:
                 log.info("%d empresas encontradas em %s", len(found), source.name)
                 results.extend(found)
                 self.hits.extend(getattr(source, 'last_hits', []))
+                warnings = getattr(source, 'errors', [])
+                if isinstance(warnings, list):
+                    self.errors.extend(source.name + ': ' + warning for warning in warnings)
             except Exception as error:
                 from skills.base import ExecutionStopped
                 if isinstance(error, ExecutionStopped):

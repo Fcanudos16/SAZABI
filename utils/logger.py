@@ -7,6 +7,11 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 _PATTERNS = [
+    re.compile(r'''(?i)["']?(?:[a-z0-9]+_)*(?:api[_-]?key|token|secret|password|authorization)["']?\s*[:=]\s*["'][^"']*["']'''),
+    re.compile(r"(?i)\b(?:[a-z0-9]+_)+(?:api[_-]?key|token|secret|password)\s*[=:]\s*\S+"),
+    re.compile(r"\bgsk_[A-Za-z0-9_-]+\b"),
+    re.compile(r"(?i)(?:https?://)[^\s/@]+:[^\s/@]+@[^\s]+"),
+    re.compile(r"(?i)[?&](?:key|api_key|token|secret|password)=[^&\s]+"),
     re.compile(r"\btvly-[A-Za-z0-9_-]+\b"),
     re.compile(r"(?i)\bBearer\s+[^\s'\"]+"),
     re.compile(r"(?i)\b(?:LAYLA_SESSION_COOKIE|session)\s*[=:]\s*[^\s;]+"),

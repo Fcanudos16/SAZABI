@@ -9,7 +9,7 @@ STATUSES = ("NEW", "RESEARCHED", "INTERESTING", "SAVED", "CONTACTED", "CLIENT", 
 # Tipos iniciais de sinais. Novos tipos podem ser adicionados aqui e em signal_detector.RULES.
 SIGNAL_TYPES = (
     "growth", "new_unit", "hiring", "manual_process", "digital_gap", "multiple_locations",
-    "customer_service", "scheduling", "ecommerce", "automation", "operational_complexity",
+    "customer_service", "scheduling", "ecommerce", "automation", "operational_complexity", "digital_tools",
 )
 
 CONFIDENCE_LABELS = {"low": "Baixa", "moderate": "Moderada", "high": "Alta"}

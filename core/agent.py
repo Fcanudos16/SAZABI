@@ -124,7 +124,7 @@ class SazabiAgent:
             command = parse(text)
         except ValueError as error:
             return str(error)
-        if re.search(r'\btvly-[A-Za-z0-9_-]+', text):
+        if re.search(r'\b(?:tvly-|gsk_)[A-Za-z0-9_-]+', text):
             return 'Configure SEARCH_API_KEY ou GROQ_API_KEY somente no .env e reinicie. A chave não foi salva na conversa.'
         if command and command.name == 'groq':
             self._pending = None
@@ -278,7 +278,7 @@ class SazabiAgent:
             raise
 
     def _execute_search(self, criteria, run):
-        log.info("Pesquisa iniciada: %s", run.query)
+        log.info("Pesquisa iniciada: run_id=%s", run.id)
         self.finder.errors, self.investigator.errors = [], []
         self.emit('SEARCH_STARTED', message='Buscando fontes públicas.')
         raws = self.finder.find(criteria)
@@ -334,7 +334,7 @@ class SazabiAgent:
         run.error_message = '; '.join(errors)
         self.runs.finish(run)
         self.memory.set_last_run(run.id)
-        log.info("%d empresas investigadas, %d sinais detectados", run.investigated, run.signals_count)
+        log.info("Pesquisa finalizada: run_id=%s status=%s empresas=%d sinais=%d", run.id,run.status,run.investigated, run.signals_count)
         reply = reports.format_search_report(run, criteria, ranked, errors,
                                              no_sources=not self.finder.sources, mock=self.config.mock)
         if errors and not raws and not self.finder.hits:
@@ -380,7 +380,7 @@ class SazabiAgent:
     def _qualify_local(self, identity):
         from analysis.commercial import CommercialService
         try:
-            CommercialService(self.db,self.config).qualify(identity)
+            CommercialService(self.db,self.config).qualify(identity,strategy_context=getattr(self,'search_strategy_context',None))
         except ValueError:
             self.emit('TASK_PROCESSING',message='Perfil comercial indisponível. Revise /profile; pesquisa preservada.')
 
@@ -395,13 +395,19 @@ class SazabiAgent:
             profile.observations = result.observations
             profile.signals = self.signals.list_for_company(profile.id)
             profile.hypotheses = self.hypotheses.list_for_company(profile.id)
+            if getattr(self,'search_strategy_context',None):
+                profile.signals,profile.hypotheses=self._strategy_analysis(profile,result.observations)
             if not result.failed:
+                if getattr(self,'search_strategy_context',None):
+                    self.hypotheses.replace_for_company(profile.id,profile.hypotheses)
                 self._qualify_local(profile.id)
             return Outcome(profile, result.observations, profile.signals, profile.hypotheses, result.from_cache)
 
         self.emit('SEARCH_PROCESSING', message='Analisando evidências de ' + profile.name + '.')
         signals = self.detector.detect(profile, result.observations)
         hypotheses = self.analyzer.analyze(profile, signals)
+        if getattr(self,'search_strategy_context',None):
+            signals,hypotheses=self._strategy_analysis(profile,result.observations)
         with self.db.transaction():
             self.sources.replace_for_company(profile.id, result.observations)
             self.signals.replace_for_company(profile.id, signals)
@@ -414,6 +420,17 @@ class SazabiAgent:
             self.companies.update(profile)
             self._qualify_local(profile.id)
         return Outcome(profile, result.observations, signals, hypotheses, False)
+
+    def _strategy_analysis(self, company, observations):
+        from analysis.qualification import evaluate
+        from analysis.strategies import evidence_policy
+        context=self.search_strategy_context
+        profile=context['profile']
+        result=evaluate(company,observations,profile,strategy_context=context)
+        allowed={r['solution'] for r in result['recommendations']}
+        signals,_=evidence_policy(profile,company,self.detector.detect(company,observations),context)
+        hypotheses=OpportunityAnalyzer(profile['services']).analyze(company,signals)
+        return signals,[h for h in hypotheses if h.solution in allowed]
 
     def _resolve_company(self, target: Optional[str], allow_lookup: bool = False
                          ) -> Tuple[Optional[CompanyProfile], Optional[str]]:

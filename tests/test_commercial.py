@@ -214,10 +214,13 @@ def test_auto_research_and_export_evaluations(agent,tmp_path):
 
 
 def test_v1_to_v2_preserves_data_and_backs_up(tmp_path):
-    path=str(tmp_path/'v1.db');db=Database(path)
-    company=CompanyProfile(name='Teste migração');CompanyRepository(db).add(company)
-    db.execute('DROP TABLE commercial_drafts');db.execute('DROP TABLE lead_evaluations')
-    db.execute('DELETE FROM schema_migrations WHERE version=2');db.close()
+    from unittest.mock import patch
+    # Build an actual old schema; do not downgrade a new database by deleting
+    # version markers while leaving later tables and columns behind.
+    with patch('database.migrations._v2'), patch('database.migrations._v3'), patch('database.migrations._v4'):
+        path=str(tmp_path/'v1.db');db=Database(path)
+        company=CompanyProfile(name='Teste migração');CompanyRepository(db).add(company)
+        db.close()
     db=Database(path)
     assert CompanyRepository(db).get(company.id).name==company.name
     assert not db.query('SELECT * FROM lead_evaluations')

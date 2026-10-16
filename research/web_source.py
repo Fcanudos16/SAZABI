@@ -2,6 +2,7 @@
 import json
 import re
 import time
+from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlsplit, urljoin, urlunsplit, quote
 from urllib.robotparser import RobotFileParser
@@ -19,6 +20,7 @@ class TavilySearch(SearchProvider):
         self.client = client or HttpClient()
 
     def search(self, query):
+        self.errors = []
         data = self.client.json('https://api.tavily.com/search',
             payload={'query': query, 'max_results': self.limit, 'search_depth': 'basic',
                      'topic': 'general', 'auto_parameters': False, 'include_answer': False,
@@ -26,9 +28,17 @@ class TavilySearch(SearchProvider):
             headers={'Authorization': 'Bearer ' + self.key})
         if not isinstance(data, dict) or not isinstance(data.get('results'), list):
             raise FetchError('Resposta Tavily inválida')
-        return [SearchResult(r['title'], r['url'], r.get('content', '') or '')
-                for r in data['results'][:self.limit]
-                if isinstance(r, dict) and isinstance(r.get('url'), str) and isinstance(r.get('title'), str)]
+        results = []
+        for row in data['results'][:self.limit]:
+            if (not isinstance(row, dict) or not isinstance(row.get('title'), str)
+                    or not row['title'].strip() or not isinstance(row.get('url'), str)
+                    or not clean_url(row['url']) or not isinstance(row.get('content', ''), (str, type(None)))):
+                self.errors.append('Resultado Tavily malformado descartado.')
+                continue
+            results.append(SearchResult(row['title'].strip(), row['url'], row.get('content') or ''))
+        if self.errors and not results:
+            raise FetchError('Tavily retornou resultados malformados; não é uma busca vazia.')
+        return results
 
     def check_connection(self):
         data = self.client.json('https://api.tavily.com/usage', headers={'Authorization': 'Bearer ' + self.key})
@@ -93,8 +103,8 @@ def organizations(document):
         types = [types] if isinstance(types, str) else types if isinstance(types, list) else []
         types = [value for value in types if isinstance(value, str)]
         allowed = {'Organization', 'LocalBusiness', 'Dentist', 'MedicalClinic', 'Restaurant',
-                   'Store', 'AutoRepair', 'ProfessionalService', 'Corporation'}
-        if set(types or []) & allowed and isinstance(document.get('name'), str):
+                   'Store', 'PetStore', 'AutoRepair', 'ProfessionalService', 'Corporation'}
+        if set(types or []) & allowed and isinstance(document.get('name'), str) and document['name'].strip():
             yield document
         yield from organizations(document.get('@graph', []))
 
@@ -112,6 +122,38 @@ def clean_url(url):
                           quote(parts.query, safe='/%?:@!$&\'()*+,;=-._~'), ''))
     except (ValueError, UnicodeError):
         return None
+
+
+def city_key(value):
+    """Normalize explicit city labels, never infer the municipality from a query."""
+    value = normalize_text(value)
+    return re.sub(r'(?:\s*[,/–-]\s*(?:capital|brasil|brazil|[a-z]{2}))+$', '', value).strip()
+
+
+def schema_nodes(value):
+    if isinstance(value, list):
+        for item in value:
+            yield from schema_nodes(item)
+    elif isinstance(value, dict):
+        yield value
+        yield from schema_nodes(value.get('@graph', []))
+
+
+def declared_segment(name, page, item=None):
+    item = item or {}
+    types = item.get('@type', [])
+    types = [types] if isinstance(types, str) else types
+    for schema, segment in [('AutoRepair','oficina'), ('MedicalClinic','clínica'),
+                            ('Dentist','clínica odontológica'), ('PetStore','pet shop')]:
+        if isinstance(types, list) and schema in types:
+            return segment
+    text = normalize_text(' '.join([name, page.title, str(item.get('description') or '')]))
+    for pattern, segment in [(r'\b(?:oficina mecanica|auto mecanica|servicos automotivos|car service)\b','oficina'),
+                             (r'\b(?:clinica|centro medico|policlinica)\b','clínica'),
+                             (r'\b(?:pet\s*shop|produtos para animais)\b','pet shop')]:
+        if re.search(pattern, text):
+            return segment
+    return None
 
 
 class WebSource(CompanySource):
@@ -182,8 +224,13 @@ class WebSource(CompanySource):
         raise FetchError('Excesso de redirecionamentos')
 
     def search(self, criteria):
-        query = ' '.join(str(x) for x in (criteria.segment, criteria.city, criteria.state,
-                                         criteria.size, criteria.need) if x)
+        city = city_key(criteria.city) if criteria.city else None
+        city_label = re.split(r'[,/]', criteria.city)[0].strip() if criteria.city else ''
+        locality = f'na cidade de "{city_label}"' if city else ''
+        region = criteria.state or ('SP' if city == 'sao paulo' else '')
+        segment = 'oficinas mecânicas' if criteria.segment == 'oficina' else criteria.segment
+        query = ' '.join(str(x) for x in (segment, locality, region,
+                                         criteria.size, criteria.need, 'site oficial') if x)
         results = []
         self.last_hits, self.errors = [], []
         for hit in self.provider.search(query):
@@ -194,48 +241,89 @@ class WebSource(CompanySource):
                 page = self.page(hit.url)
             except FetchError as error:
                 record['reason'] = str(error)
+                self.errors.append(hit.url + ': ' + str(error))
                 continue
             company = self.extract(page, criteria.city)
             if company:
                 record.update(status='identified', reason='Identidade publicada no próprio site; filtros exigem revisão.')
                 results.append(company)
+            else:
+                record['reason'] = self.extraction_reason
+        provider_errors = getattr(self.provider, 'errors', [])
+        if isinstance(provider_errors, list):
+            self.errors.extend(provider_errors)
         return results
 
     def extract(self, page, city_filter=None):
+        self.extraction_reason = 'Identidade da empresa não confirmada no site.'
         # Directories/social networks are discovery pages, never company identities.
         host = (urlsplit(page.url).hostname or '').removeprefix('www.')
         platforms = ('facebook.com', 'instagram.com', 'linkedin.com', 'youtube.com',
                      'google.com', 'google.com.br', 'econodata.com.br', 'solutudo.com.br',
                      'doctoralia.com.br', 'cnpj.biz', 'yelp.com', 'tripadvisor.com.br')
         if any(host == domain or host.endswith('.' + domain) for domain in platforms):
+            self.extraction_reason = 'Diretório ou rede social; não é identidade de site oficial.'
             return None
         for document in page.documents:
-            for item in organizations(document):
-                address = item.get('address') or {}
-                if not isinstance(address, dict):
-                    address = {}
-                city = address.get('addressLocality')
-                if city_filter and isinstance(city, str) and normalize_text(city_filter) != normalize_text(city):
-                    continue
-                # Do not turn directory entries into companies on the directory domain.
-                official = item.get('url') or page.url
-                if not isinstance(official, str) or not clean_url(official) or (urlsplit(official).hostname or '').removeprefix('www.') != host:
-                    continue
-                observation = Observation('Cadastro público: ' + json.dumps(item, ensure_ascii=False)[:4000],
-                                          self.name, page.url, now_iso())
-                return RawCompany(name=item['name'][:200], website=official,
-                    city=city if isinstance(city, str) else None,
-                    state=address.get('addressRegion') if isinstance(address.get('addressRegion'), str) else None,
-                    address=address.get('streetAddress') if isinstance(address.get('streetAddress'), str) else None, source_name=self.name,
-                    phone=item.get('telephone') if isinstance(item.get('telephone'), str) else None,
-                    description=item.get('description') if isinstance(item.get('description'), str) else None,
-                    observations=[observation])
+            for node in schema_nodes(document):
+                types = node.get('@type', [])
+                types = [types] if isinstance(types, str) else types if isinstance(types, list) else []
+                if any(value in ('NewsArticle','Article','BlogPosting','NewsMediaOrganization') for value in types):
+                    self.extraction_reason = 'Página editorial; o publicador não é a empresa prospectada.'
+                    return None
+        location_text = None
+        target = city_key(city_filter) if city_filter else None
+        if target:
+            # Require an explicit municipality/state pair, not a brand containing the city name.
+            pattern = r'\b' + re.escape(target) + r'\s*(?:/|,|–|-)\s*(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)\b'
+            location_text = next((text for text in page.text if re.search(pattern, normalize_text(text))), None)
+        items = [item for document in page.documents for item in organizations(document)]
+        items.sort(key=lambda item: (not isinstance(item.get('address'), dict)
+                    or not item['address'].get('addressLocality'),
+                    not bool(set(value for value in (item.get('@type', []) if isinstance(item.get('@type'), list) else [item.get('@type')]) if isinstance(value, str))
+                             & {'LocalBusiness','MedicalClinic','AutoRepair','Dentist','PetStore'})))
+        for item in items:
+            address = item.get('address') or {}
+            if not isinstance(address, dict):
+                address = {}
+            city = address.get('addressLocality')
+            if target and isinstance(city, str) and target != city_key(city):
+                continue
+            if target and not isinstance(city, str) and not location_text:
+                continue
+            # Do not turn directory entries into companies on the directory domain.
+            official = item.get('url') or page.url
+            if not isinstance(official, str) or not clean_url(official) or (urlsplit(official).hostname or '').removeprefix('www.') != host:
+                continue
+            observation = Observation('Cadastro público: ' + json.dumps(item, ensure_ascii=False)[:4000],
+                                      self.name, page.url, now_iso())
+            observations = [observation]
+            if location_text:
+                observations.append(Observation(location_text[:1500], self.name, page.url, now_iso()))
+            name = unescape(item['name']).strip()
+            if target and city_key(name).startswith(target):
+                brand = page.meta.get('og:site_name', '').strip()
+                if brand and normalize_text(brand) not in normalize_text(name):
+                    name = brand + ' — ' + name
+            return RawCompany(name=name[:200], website=official,
+                city=city if isinstance(city, str) else city_filter if location_text else None,
+                segment=declared_segment(item['name'], page, item),
+                state=address.get('addressRegion') if isinstance(address.get('addressRegion'), str) else None,
+                address=address.get('streetAddress') if isinstance(address.get('streetAddress'), str) else None, source_name=self.name,
+                phone=item.get('telephone') if isinstance(item.get('telephone'), str) else None,
+                description=item.get('description') if isinstance(item.get('description'), str) else None,
+                observations=observations)
+        if target and not location_text:
+            self.extraction_reason = 'Localização solicitada não confirmada na página; nome ou consulta não comprovam cidade.'
+            return None
         # An explicitly published site identity is usable; title alone is not.
         name = page.meta.get('og:site_name', '').strip()
         if name and 2 <= len(name) <= 150 and normalize_text(name) in normalize_text(' '.join(page.text)):
             return RawCompany(name=name, website=page.url, source_name=self.name,
+                city=city_filter if location_text else None, segment=declared_segment(name, page),
                 observations=[Observation('Identidade declarada pelo site (og:site_name): ' + name,
-                                          self.name, page.url, now_iso())])
+                                          self.name, page.url, now_iso())] +
+                             ([Observation(location_text[:1500], self.name, page.url, now_iso())] if location_text else []))
         return None
 
 
@@ -249,6 +337,7 @@ class WebSource(CompanySource):
         return matches[0] if len(matches) == 1 else None
 
     def fetch_observations(self, company):
+        self.errors = []
         if not company.website:
             return []
         page = self.page(company.website)
@@ -267,8 +356,8 @@ class WebSource(CompanySource):
             selected.add(url)
             try:
                 pages.append(self.page(url))
-            except FetchError:
-                pass  # Main page remains evidence; do not claim the linked page was read.
+            except FetchError as error:
+                self.errors.append(url + ': ' + str(error))
             if len(selected) >= 2:
                 break
         identity = self.extract(page)

@@ -28,12 +28,16 @@ class ResultTerminal:
         button(header, '×', self.hide).pack(side='right')
         actions = tk.Frame(body, bg=BG)
         actions.pack(fill='x', padx=12, pady=(0, 6))
-        for column,(text, command) in enumerate([('Leads', '/leads'), ('Histórico', '/history'), ('Ajuda', '/help')]):
+        for column,(text, command) in enumerate([('Leads', '/leads'), ('Histórico', '/history'), ('Ajuda', '/help'), ('Visão geral', '/overview'), ('Tarefas', '/tasks')]):
             button(actions, text, lambda value=command: app.submit(value)).grid(row=0,column=column,sticky='w',padx=(0,5))
         button(actions, 'Último', app.show_last_result).grid(row=1,column=0,sticky='w')
         button(actions, 'Nova pesquisa', app.open_search).grid(row=1,column=1,sticky='w')
         self.cancel = button(actions, 'Cancelar', app.cancel_search)
         self.cancel.grid(row=1,column=2,sticky='w')
+        button(actions, 'Perfil', lambda: app.submit('/profile')).grid(row=1,column=3,sticky='w')
+        button(actions, 'Estratégias', lambda: app.submit('/strategies')).grid(row=1,column=4,sticky='w')
+        for column,(label,command) in enumerate([('Saúde','/health'),('Backup','/backup'),('Manutenção','/maintenance')]):
+            button(actions,label,lambda value=command:app.submit(value)).grid(row=2,column=column,sticky='w')
         self.cancel.configure(state='disabled')
         self.status = tk.StringVar(value='IDLE · clique direito no mascote para configurar')
         tk.Label(body, textvariable=self.status, anchor='w', bg=BG, fg=MUTED, font=('Consolas', 9)).pack(side='bottom', fill='x', padx=12, pady=8)

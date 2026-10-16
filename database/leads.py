@@ -6,15 +6,16 @@ import os
 from pathlib import Path
 import tempfile
 import uuid
+from datetime import date
 from analysis.scoring import opportunity_score
 from database.repositories import SignalRepository, HypothesisRepository
 from utils.normalization import normalize_name, normalize_city, normalize_phone
 from utils.timeutils import now_iso
 
-STAGES = {'new': 'Novo lead', 'qualified': 'Qualificado', 'contact_pending': 'Contato pendente',
+STAGES = {'new': 'Novo lead', 'verifying': 'Em verificação', 'qualified': 'Qualificado', 'contact_pending': 'Contato pendente',
           'contacted': 'Contatado', 'negotiating': 'Em negociação', 'converted': 'Convertido', 'discarded': 'Descartado'}
 EDITABLE = {'phone', 'segment', 'city', 'address', 'description'}
-ACTIONS = {'response': 'Resposta recebida', 'next': 'Próxima ação', 'note': 'Observação'}
+ACTIONS = {'response': 'Resposta recebida', 'next': 'Intenção registrada sem prazo (histórico)', 'note': 'Observação'}
 
 
 class LeadRepository:
@@ -28,17 +29,26 @@ class LeadRepository:
         return dict(rows[0])
 
     def event(self, identity, kind, detail):
-        self.db.execute('INSERT INTO lead_events(company_id,kind,detail,created_at) VALUES(?,?,?,?)',
-                        (identity, kind, detail, now_iso()))
+        stamp=now_iso()
+        with self.db.transaction():
+            self.db.execute('INSERT INTO lead_events(company_id,kind,detail,created_at) VALUES(?,?,?,?)',
+                            (identity, kind, detail, stamp))
+            self.db.execute('UPDATE companies SET updated_at=? WHERE id=?',(stamp,identity))
 
     def events(self, identity):
         return [dict(r) for r in self.db.query('SELECT kind,detail,created_at FROM lead_events WHERE company_id=? ORDER BY id', (identity,))]
 
     def list(self, query='', stage=None, city=None, segment=None, archived=False, saved=False, offset=0,
-             min_score=None, category=None, order='name'):
+             min_score=None, category=None, order='name', max_score=None,
+             discovered_from=None, discovered_to=None, overdue=False, insufficient=False, limit=50):
         if min_score is not None and (type(min_score) is not int or not 0<=min_score<=100): raise ValueError('min_score: 0 a 100.')
         if category is not None and category not in ('high','moderate','low','insufficient'): raise ValueError('Categoria inválida.')
-        if order not in ('name','score'): raise ValueError('Ordem inválida.')
+        if max_score is not None and (type(max_score) is not int or not 0<=max_score<=100): raise ValueError('max_score: 0 a 100.')
+        if min_score is not None and max_score is not None and min_score>max_score: raise ValueError('Faixa inválida.')
+        if order not in ('name','score','discovered','updated','next'): raise ValueError('Ordem inválida.')
+        for value in (discovered_from, discovered_to):
+            if value: self.validate_date(value)
+        if discovered_from and discovered_to and discovered_from>discovered_to: raise ValueError('Período inválido.')
         clauses, args = ['archived=?'], [int(archived)]
         if stage:
             if stage not in STAGES: raise ValueError('Estágio inválido: ' + ', '.join(STAGES))
@@ -50,17 +60,28 @@ class LeadRepository:
         if saved: clauses.append('id IN (SELECT company_id FROM saved_companies)')
         rows = [dict(r) for r in self.db.query('SELECT companies.*, '
             '(SELECT score FROM lead_evaluations e WHERE e.company_id=companies.id ORDER BY e.id DESC LIMIT 1) AS qualification_score, '
-            '(SELECT category FROM lead_evaluations e WHERE e.company_id=companies.id ORDER BY e.id DESC LIMIT 1) AS qualification_category '
+            '(SELECT category FROM lead_evaluations e WHERE e.company_id=companies.id ORDER BY e.id DESC LIMIT 1) AS qualification_category, '
+            '(SELECT due_date FROM lead_tasks t WHERE t.company_id=companies.id AND completed=0 ORDER BY due_date,id LIMIT 1) AS next_date, '
+            '(SELECT title FROM lead_tasks t WHERE t.company_id=companies.id AND completed=0 ORDER BY due_date,id LIMIT 1) AS next_action '
             'FROM companies WHERE ' + ' AND '.join(clauses) + ' ORDER BY name,id', args)]
         if segment: rows = [r for r in rows if normalize_name(segment) in normalize_name(r['segment'])]
         if min_score is not None: rows=[r for r in rows if r['qualification_score'] is not None and r['qualification_score']>=min_score]
+        if max_score is not None: rows=[r for r in rows if r['qualification_score'] is not None and r['qualification_score']<=max_score]
         if category: rows=[r for r in rows if r['qualification_category']==category]
+        if insufficient: rows=[r for r in rows if r['qualification_category'] in (None,'insufficient')]
+        from utils.timeutils import parse_iso
+        if discovered_from: rows=[r for r in rows if parse_iso(r['first_seen']).astimezone().date().isoformat()>=discovered_from]
+        if discovered_to: rows=[r for r in rows if parse_iso(r['first_seen']).astimezone().date().isoformat()<=discovered_to]
+        if overdue: rows=[r for r in rows if r['next_date'] and r['next_date']<date.today().isoformat()]
         if order=='score': rows.sort(key=lambda r: (-(r['qualification_score'] if r['qualification_score'] is not None else -1),r['name'],r['id']))
-        return rows[offset:offset+50]
+        if order in ('discovered','updated'): rows.sort(key=lambda r:(r['first_seen' if order=='discovered' else 'updated_at'],r['id']),reverse=True)
+        if order=='next': rows.sort(key=lambda r:(r['next_date'] is None,r['next_date'] or '',r['name'],r['id']))
+        return rows[offset:offset+limit] if limit is not None else rows[offset:]
 
-    def stage(self, identity, value):
+    def stage(self, identity, value, reason=''):
         row = self.resolve(identity)
         if value not in STAGES: raise ValueError('Estágios: ' + ', '.join(STAGES))
+        self.validate_text(reason, optional=True)
         if row['commercial_status'] == value: return
         with self.db.transaction():
             self.db.execute('UPDATE companies SET commercial_status=?,updated_at=? WHERE id=?', (value,now_iso(),row['id']))
@@ -69,7 +90,8 @@ class LeadRepository:
                 self.db.execute('UPDATE companies SET status=? WHERE id=?', (legacy,row['id']))
             elif row['status'] in ('CONTACTED','CLIENT','DISCARDED'):
                 self.db.execute("UPDATE companies SET status=? WHERE id=?", ('RESEARCHED' if row['investigated'] else 'NEW',row['id']))
-            self.event(row['id'], 'stage', row['commercial_status'] + ' → ' + value)
+            self.event(row['id'], 'stage', row['commercial_status'] + ' → ' + value + (' | Motivo: '+reason if reason else ''))
+            if value=='contacted': self.event(row['id'], 'manual_contact', 'Contato registrado manualmente pelo usuário.' + (' '+reason if reason else ''))
             # Discard is also respected by the existing research pipeline.
             if value == 'discarded':
                 self.db.execute('INSERT OR REPLACE INTO ignored_companies VALUES(?,?,?)', (row['id'],'Descartado pelo usuário',now_iso()))
@@ -81,13 +103,17 @@ class LeadRepository:
         if field not in EDITABLE | {'notes'}: raise ValueError('Campos editáveis: ' + ', '.join(sorted(EDITABLE | {'notes'})))
         if not isinstance(value,str) or len(value)>2000 or '\x00' in value: raise ValueError('Valor inválido; máximo de 2.000 caracteres.')
         row = self.resolve(identity)
-        if row[field] == value: return
+        if row[field] == value and field=='notes': return
         with self.db.transaction():
             self.db.execute(f'UPDATE companies SET {field}=?,updated_at=? WHERE id=?', (value,now_iso(),row['id']))
             if field in ('city','phone'):
                 key, normalized = ('city_key',normalize_city(value)) if field=='city' else ('phone_key',normalize_phone(value))
                 self.db.execute(f'UPDATE companies SET {key}=? WHERE id=?', (normalized,row['id']))
             self.event(row['id'], 'edit', json.dumps({'field':field,'before':row[field],'after':value},ensure_ascii=False))
+            if field!='notes':
+                manual=json.loads(row['manual_fields'])
+                manual[field]={'value':value,'verified_at':now_iso(),'origin':'user'}
+                self.db.execute('UPDATE companies SET manual_fields=? WHERE id=?',(json.dumps(manual,ensure_ascii=False),row['id']))
 
     def archive(self, identity, archived=True):
         row=self.resolve(identity)
@@ -124,8 +150,71 @@ class LeadRepository:
         data['sources']=[dict(r) for r in self.db.query('SELECT source_name,url,text,retrieved_at FROM source_history WHERE company_id=? ORDER BY id', (row['id'],))]
         data['research_runs']=[dict(r) for r in self.db.query('SELECT r.id,r.query,r.started_at,r.finished_at,r.status,r.error_message FROM research_runs r JOIN run_companies rc ON rc.run_id=r.id WHERE rc.company_id=? ORDER BY r.id', (row['id'],))]
         data['events']=self.events(row['id'])
+        data['manual_fields']=json.loads(row['manual_fields'])
+        data['tasks']=self.tasks(row['id'], include_completed=True)
+        pending=[t for t in data['tasks'] if not t['completed']]
+        data['next_action']=pending[0] if pending else None
         data['possible_duplicates']=self.duplicates(row['id'])
         return data
+
+    @staticmethod
+    def validate_text(value, optional=False):
+        if not isinstance(value,str) or '\x00' in value or len(value)>2000 or (not optional and not value.strip()):
+            raise ValueError('Texto obrigatório, até 2.000 caracteres.')
+
+    @staticmethod
+    def validate_date(value):
+        if not isinstance(value,str) or date.fromisoformat(value).isoformat()!=value:
+            raise ValueError('Data: AAAA-MM-DD.')
+
+    def tasks(self, identity=None, include_completed=False, overdue=False):
+        clauses, args=['c.archived=0'],[]
+        if identity:
+            clauses=['t.company_id=?']; args=[self.resolve(identity)['id']]
+        if not include_completed: clauses.append('t.completed=0')
+        if overdue:
+            clauses.extend(['t.completed=0','t.due_date<?']);args.append(date.today().isoformat())
+        return [dict(r) for r in self.db.query('SELECT t.*,c.name AS company_name FROM lead_tasks t JOIN companies c ON c.id=t.company_id WHERE '+' AND '.join(clauses)+' ORDER BY t.completed,t.due_date,t.id',args)]
+
+    def create_task(self, identity, title, due_date, description=''):
+        row=self.resolve(identity)
+        self.validate_text(title);self.validate_text(description,optional=True);self.validate_date(due_date)
+        stamp=now_iso()
+        with self.db.transaction():
+            cursor=self.db.execute('INSERT INTO lead_tasks(company_id,title,description,due_date,created_at,updated_at) VALUES(?,?,?,?,?,?)',
+                                   (row['id'],title.strip(),description,due_date,stamp,stamp))
+            task_id=cursor.lastrowid
+            self.event(row['id'],'task_created',f'#{task_id} · {title} · {due_date}')
+            self.db.execute('UPDATE companies SET updated_at=? WHERE id=?',(stamp,row['id']))
+        return task_id
+
+    def change_task(self, task_id, completed=None, title=None, due_date=None, description=None):
+        row=self.db.query_one('SELECT * FROM lead_tasks WHERE id=?',(task_id,))
+        if not row: raise ValueError('Tarefa não encontrada.')
+        values=dict(row)
+        if completed is not None:
+            if type(completed) is not bool: raise ValueError('Estado inválido.')
+            if bool(row['completed'])==completed: return
+            values.update(completed=int(completed),completed_at=now_iso() if completed else None)
+        if title is not None: self.validate_text(title);values['title']=title.strip()
+        if due_date is not None: self.validate_date(due_date);values['due_date']=due_date
+        if description is not None: self.validate_text(description,optional=True);values['description']=description
+        values['updated_at']=now_iso()
+        with self.db.transaction():
+            self.db.execute('UPDATE lead_tasks SET title=?,description=?,due_date=?,completed=?,completed_at=?,updated_at=? WHERE id=?',
+                            tuple(values[k] for k in ('title','description','due_date','completed','completed_at','updated_at','id')))
+            kind='task_completed' if completed is True else 'task_reopened' if completed is False else 'task_edited'
+            keys=('title','description','due_date','completed','completed_at')
+            self.event(row['company_id'],kind,json.dumps({'id':task_id,'before':{k:row[k] for k in keys},'after':{k:values[k] for k in keys}},ensure_ascii=False))
+            self.db.execute('UPDATE companies SET updated_at=? WHERE id=?',(values['updated_at'],row['company_id']))
+
+    def overview(self):
+        counts={stage:0 for stage in STAGES}
+        counts.update({r['commercial_status']:r['n'] for r in self.db.query('SELECT commercial_status,COUNT(*) n FROM companies WHERE archived=0 GROUP BY commercial_status')})
+        pending=self.tasks()
+        priority=[r for r in self.list(order='score',limit=None) if r['commercial_status'] not in ('converted','discarded') and r['qualification_score'] is not None]
+        return dict(total=sum(counts.values()),stages=counts,overdue=sum(t['due_date']<date.today().isoformat() for t in pending),
+                    upcoming=pending[:10],priority=priority[:5])
 
     def export(self, format, identities, directory):
         if format not in ('csv','json'): raise ValueError('Formato: csv ou json.')

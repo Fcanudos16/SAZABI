@@ -8,6 +8,7 @@ from database.leads import LeadRepository
 from skills.base import SkillResult
 
 COMMANDS={'profile':'Ver perfil; set campo item;item para editar',
+          'strategies':'Ver estratégias; enable|disable ID; detalhes: /profile',
           'qualify':'Qualificar ID [--refresh] localmente',
           'evaluations':'Histórico de avaliações: ID [número]',
           'draft':'Prévia de abordagem: ID email|message|call',
@@ -47,12 +48,34 @@ class CommercialCommands:
     def _execute(self,name,args):
         message=''; data={}
         if name=='draft': self.agent._commercial_draft=None
-        if name=='profile':
+        if name=='strategies':
+            if args.startswith('run '):
+                number=int(args.split()[1])
+                row=self.agent.db.query_one('SELECT strategy_json FROM research_runs WHERE id=?',(number,))
+                if not row: raise ValueError('Pesquisa não encontrada.')
+                return SkillResult(True,'commercial','completed','Configuração histórica da pesquisa:\n'+row['strategy_json'])
+            profile=load(self.agent.config)
             if args:
-                action,field,values=args.split(None,2)
-                if action!='set': raise ValueError('Use /profile set campo item;item. - limpa a lista.')
-                update(self.agent.config,field,[] if values=='-' else [s.strip() for s in values.split(';')])
-            message='Perfil comercial local:\n'+json.dumps(load(self.agent.config),ensure_ascii=False,indent=2)+'\nPesos e limites: edite commercial_profile.json. Avaliações anteriores são preservadas.'
+                action,key=args.split()
+                if action not in ('enable','disable') or key not in profile['strategies']: raise ValueError('Use /strategies enable|disable ID.')
+                profile['strategies'][key]['enabled']=action=='enable'
+                update(self.agent.config,'strategies',profile['strategies'])
+            message='Estratégias locais:\n'+ '\n'.join(f"{key}: {'ativa' if s['enabled'] else 'desativada'} · {s['objective']}\n  Serviços compatíveis: {', '.join(s['services'])}\n  Evidência: {s['evidence']}\n  Limites: {s['limits']}" for key,s in profile['strategies'].items())
+            message+='\nEscolher: /search estratégia=ID sua consulta. Configuração completa: /profile.'
+        elif name=='profile':
+            if args:
+                if args.startswith('reset '):
+                    from analysis.strategies import defaults
+                    from analysis.commercial_profile import WEIGHTS
+                    field=args.split(None,1)[1]
+                    values={'strategies':defaults(),'segment_rules':{},'weights':WEIGHTS,'thresholds':{'moderate':40,'high':70}}
+                    if field not in values: raise ValueError('Restaurar: /profile reset strategies|segment_rules|weights|thresholds. Serviços são preservados.')
+                    update(self.agent.config,field,values[field])
+                else:
+                    action,field,values=args.split(None,2)
+                    if action not in ('set','json'): raise ValueError('Use /profile set campo item;item ou /profile json campo JSON.')
+                    update(self.agent.config,field,json.loads(values) if action=='json' else [] if values=='-' else [s.strip() for s in values.split(';')])
+            message='Perfil comercial local:\n'+json.dumps(load(self.agent.config),ensure_ascii=False,indent=2)+'\nListas: /profile set campo item;item (- limpa). Regras/pesos/limites: /profile json campo JSON. Avaliações anteriores são preservadas.'
         elif name=='draft-save':
             if args: raise ValueError('Use /draft-save sem argumentos.')
             draft=getattr(self.agent,'_commercial_draft',None)

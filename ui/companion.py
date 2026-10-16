@@ -593,6 +593,8 @@ class CompanionApp:
                     # No console, dashboard or persistent bubble is opened at startup.
                 elif kind == 'activity':
                     self.activity(value)
+                elif kind == 'maintenance_alert':
+                    self.notify(value)
                 elif kind == 'command_result':
                     self.finish_research_timer(value.get('status', 'failed'))
                     self.set_busy(False)
@@ -608,7 +610,8 @@ class CompanionApp:
                         self.operation_failed = not value.get('success', False)
                         if self.operation_failed: self.set_state('IDLE')
                         if self.active_research: self.get_terminal().remember_result()
-                        self.notify(f"Execução #{self.get_terminal().execution_number} · {self.get_terminal().status.get()}. Clique para consultar.")
+                        if value.get('data',{}).get('notify',True):
+                            self.notify(f"Execução #{self.get_terminal().execution_number} · {self.get_terminal().status.get()}. Clique para consultar.")
                         self.idle_job = self.root.after(1200, self.to_idle)
                 elif kind == 'reply':
                     self.finish_research_timer('failed' if self.operation_failed else 'completed')

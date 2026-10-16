@@ -1,5 +1,6 @@
 """Search orchestration adapter. Existing research services remain authoritative."""
 import json
+import re
 from pathlib import Path
 from skills.base import SkillResult, ExecutionStopped
 from core.command_router import parse_criteria
@@ -29,12 +30,22 @@ class SearchSkill:
 
     def execute(self, query, context):
         agent = context.agent
+        original_query=query
+        from analysis.commercial_profile import load
+        from analysis.strategies import plan
+        explicit=re.search(r'(?:^|\s)(?:estratégia|estrategia|strategy)=([a-z0-9_]+)(?=\s|$)',query)
+        selected=explicit.group(1) if explicit else None
+        if explicit: query=(query[:explicit.start()]+' '+query[explicit.end():]).strip()
         criteria = context.criteria or parse_criteria(query)
+        try:
+            criteria,search_plan=plan(load(agent.config),criteria,query,selected)
+        except ValueError as error:
+            return SkillResult(False,self.name,'failed',message=str(error))
         if not criteria.city:
             criteria.city = agent.memory.get_setting('region') or agent.config.default_region
         if not criteria.city and not self.config_error:
             agent._pending = dict(type='region', criteria=criteria,
-                                  skill_name=self.name, skill_query=query)
+                                  skill_name=self.name, skill_query=original_query)
             self.state = 'idle'
             return SkillResult(False, self.name, 'needs_input', message='Qual região devo pesquisar?')
         # Paid Tavily access requires explicit opt-in; validate discovery and enrichment.
@@ -69,10 +80,16 @@ class SearchSkill:
             client.checkpoint = context.checkpoint
         self.state = 'running'
         context.state('running')
+        from dataclasses import asdict
+        search_plan['effective']=asdict(criteria)
+        criteria.strategy_context=search_plan
+        agent.search_strategy_context=search_plan
         try:
             previous = agent.runs.last()
             context.checkpoint()
             message = agent._cmd_search(criteria)
+            label=search_plan['strategy']['objective'] if search_plan['strategy'] else 'Exploratória — nenhuma estratégia compatível ativa'
+            message='Estratégia: '+label+'\n'+('Critérios do perfil: '+', '.join(search_plan['applied'])+'\n' if search_plan['applied'] else '')+search_plan['limitation']+'\n\n'+message
             run = agent.runs.last()
             if run is None or (previous and run.id == previous.id):
                 if agent._pending and agent._pending.get('type') == 'region':
@@ -84,7 +101,20 @@ class SearchSkill:
                 context.state('failed')
                 return SkillResult(False,self.name,'failed',message=message)
             companies = agent.companies.get_many(agent.runs.company_ids(run.id))
-            data = dict(run_id=run.id, companies=[dict(id=p.id, name=p.name, segment=p.segment,
+            summaries=[]
+            for company in companies:
+                evaluation=agent.db.query_one('SELECT result_json FROM lead_evaluations WHERE company_id=? ORDER BY id DESC LIMIT 1',(company.id,))
+                if not evaluation: continue
+                saved=json.loads(evaluation['result_json'])
+                # A failed investigation can leave a previous assessment intact.
+                # Do not present that assessment as if it used this search plan.
+                if saved.get('strategy_context')!=search_plan: continue
+                summaries.append(company.name+f": {saved['score']}/100 — {saved['category']}; "+
+                    ('; '.join(r['solution'] for r in saved['recommendations']) or 'sem hipótese compatível sustentada')+
+                    ('\n  '+'; '.join(saved['negative_factors']) if saved['negative_factors'] else '')+
+                    '\n  Justificativa e fontes: /lead '+company.id)
+            if summaries: message+='\n\nCompatibilidade comercial (hipóteses, não necessidades confirmadas):\n'+'\n'.join(summaries)
+            data = dict(run_id=run.id, strategy=search_plan, companies=[dict(id=p.id, name=p.name, segment=p.segment,
                 location=p.location, website=p.website) for p in companies])
             status = run.status
             self.state = status
@@ -108,3 +138,4 @@ class SearchSkill:
             for client, callback in callbacks:
                 client.checkpoint = callback
             agent.skill_context = None
+            agent.search_strategy_context = None

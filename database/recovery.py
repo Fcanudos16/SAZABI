@@ -10,11 +10,12 @@ class ResearchBusy(RuntimeError):
 
 
 @contextmanager
-def research_lock(db):
+def research_lock(db, suffix='.research.lock'):
     if db.path==':memory:':
         yield
         return
-    path=Path(db.path).resolve().with_suffix('.research.lock')
+    path=Path(db.path).resolve().with_suffix(suffix)
+    path.parent.mkdir(parents=True,exist_ok=True)
     handle=open(path,'a+b')
     locked=False
     try:
@@ -49,7 +50,7 @@ def recover_locked(db):
     with db.transaction():
         for row in db.query("SELECT id FROM research_runs WHERE status='running'"):
             counts=db.query_one('SELECT COUNT(*) n,COALESCE(SUM(is_new),0) fresh FROM run_companies WHERE run_id=?',(row['id'],))
-            db.execute("UPDATE research_runs SET status='failed',finished_at=?,error_message=?,new_count=?,known_count=? WHERE id=?",
+            db.execute("UPDATE research_runs SET status='interrupted',finished_at=?,error_message=?,new_count=?,known_count=? WHERE id=?",
                        (now_iso(),'Execução interrompida; recuperada na inicialização. Dados confirmados preservados; contagens podem ser incompletas.',
                         counts['fresh'],counts['n']-counts['fresh'],row['id']))
 

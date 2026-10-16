@@ -15,24 +15,24 @@ class CommercialService:
     def __init__(self, db, config):
         self.db,self.config=db,config
 
-    def inputs(self, identity):
+    def inputs(self, identity, strategy_context=None):
         row=LeadRepository(self.db).resolve(identity)
         company=CompanyRepository(self.db).get(row['id'])
         observations=SourceRepository(self.db).list_for_company(row['id'])
-        profile=load(self.config)
+        profile=strategy_context['profile'] if strategy_context else load(self.config)
         fields=('id','name','segment','city','state','estimated_size','phone','website','units')
         payload={'company':{k:getattr(company,k) for k in fields},'observations':[asdict(o) for o in observations],
-                 'profile':profile,'version':VERSION,'date':utcnow().date().isoformat()}
+                 'profile':profile,'version':VERSION,'date':utcnow().date().isoformat(),'strategy_context':strategy_context}
         digest=hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         return company,observations,profile,digest
 
-    def qualify(self, identity, refresh=False):
-        company,observations,profile,digest=self.inputs(identity)
+    def qualify(self, identity, refresh=False, strategy_context=None):
+        company,observations,profile,digest=self.inputs(identity,strategy_context)
         with self.db.transaction():
             last=self.db.query_one('SELECT * FROM lead_evaluations WHERE company_id=? ORDER BY id DESC LIMIT 1',(company.id,))
             if last and last['input_hash']==digest and not refresh:
                 return self.unpack(last)
-            result=evaluate(company,observations,profile)
+            result=evaluate(company,observations,profile,strategy_context=strategy_context)
             stamp=now_iso()
             cursor=self.db.execute('INSERT INTO lead_evaluations(company_id,input_hash,engine_version,score,category,result_json,evaluated_at) VALUES(?,?,?,?,?,?,?)',
                 (company.id,digest,VERSION,result['score'],result['category'],json.dumps(result,ensure_ascii=False),stamp))

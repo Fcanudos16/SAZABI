@@ -1,0 +1,86 @@
+{
+  "scope": "Frozen real sample; manual review of captured self-declarations, not legal verification",
+  "capture_started_at": "2026-10-16T01:15:02+00:00",
+  "capture_sha256": "71afc22e5411d784f0d9ce13877c405d83bb97cbefcd2bbcc743b1942fc5ecd0",
+  "results": 29,
+  "usable_pages": {
+    "numerator": 17,
+    "denominator": 29,
+    "percent": 58.62
+  },
+  "self_identified_businesses": {
+    "numerator": 16,
+    "denominator": 29,
+    "percent": 55.17
+  },
+  "local_candidates_manual": {
+    "numerator": 8,
+    "denominator": 29,
+    "percent": 27.59
+  },
+  "insufficient": {
+    "numerator": 16,
+    "denominator": 29,
+    "percent": 55.17
+  },
+  "discarded": {
+    "numerator": 5,
+    "denominator": 29,
+    "percent": 17.24
+  },
+  "decisions": {
+    "unavailable": 12,
+    "outside": 4,
+    "local": 8,
+    "editorial": 1,
+    "uncertain": 4
+  },
+  "unique_discovery_urls": 29,
+  "duplicate_urls": {
+    "numerator": 0,
+    "denominator": 29,
+    "percent": 0.0
+  },
+  "automatic_companies_before": 7,
+  "automatic_companies_after": 5,
+  "companies_with_hypotheses": {
+    "numerator": 3,
+    "denominator": 5,
+    "percent": 60.0
+  },
+  "commercial_need_verified": 0,
+  "initial_live_seconds": [
+    37.04717959999107,
+    34.208709099999396,
+    20.541359800001374
+  ],
+  "initial_live_mean_seconds": 30.599082833330613,
+  "baseline_statuses": [
+    "completed",
+    "completed",
+    "completed"
+  ],
+  "corrected_statuses": [
+    "partial",
+    "partial",
+    "partial"
+  ],
+  "repeat_query": {
+    "found": 1,
+    "new_count": 0,
+    "known_count": 1,
+    "duplicates": 0
+  },
+  "persistence": {
+    "companies": 5,
+    "sources": 398,
+    "research_runs": 4,
+    "discovery_results": 39,
+    "lead_evaluations": 5
+  },
+  "source_errors": {
+    "Coleta não permitida por robots.txt": 8,
+    "Acesso recusado pela fonte.": 2,
+    "Resposta descompactada excedeu o limite": 2
+  }
+}

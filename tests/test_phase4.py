@@ -77,9 +77,9 @@ def test_restart_marks_orphan_run_without_deleting_data(tmp_path):
     agent=build_agent(config)
     try:
         restored=agent.runs.last()
-        assert restored.status=='failed' and restored.finished_at and 'interrompida' in restored.error_message
+        assert restored.status=='interrupted' and restored.finished_at and 'interrompida' in restored.error_message
         assert restored.new_count==1 and agent.companies.get(company.id)
-        assert 'failed' in agent.handle('/results')
+        assert 'interrupted' in agent.handle('/results')
     finally:agent.db.close()
 
 
@@ -93,7 +93,7 @@ def test_recovery_does_not_mark_live_other_instance_as_crashed(tmp_path):
             with pytest.raises(ResearchBusy):
                 with research_lock(other):pass
         recover(other)
-        assert RunRepository(other).last().status=='failed'
+        assert RunRepository(other).last().status=='interrupted'
         with research_lock(other):pass
     finally:db.close();other.close()
 

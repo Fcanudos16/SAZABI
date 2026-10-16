@@ -1,6 +1,8 @@
 """Background agent execution, independent of the desktop rendering layer."""
 import logging
-from queue import Queue
+from queue import Queue, Empty
+from contextlib import ExitStack
+from types import SimpleNamespace
 from threading import Thread, Event, Lock
 from dataclasses import dataclass, field
 
@@ -31,6 +33,7 @@ class AgentWorker:
         self._submission_lock = Lock()
         self._active_request = None
         self._closed = False
+        self._maintenance_cancel=Event()
         self.progress = progress
         self.snapshots = snapshots
         self.commands, self.events = Queue(), Queue()
@@ -39,17 +42,36 @@ class AgentWorker:
 
     def _run(self, config, factory):
         agent = None
+        stack=ExitStack()
         try:
+            from database.recovery import research_lock
+            stack.enter_context(research_lock(SimpleNamespace(path=config.database_path),suffix='.session.lock'))
             agent = factory(config, notifier=NullNotifier())
+            from core.maintenance import Maintenance
+            maintenance=Maintenance(agent,lambda message:self.events.put(('maintenance_alert',message)))
+            maintenance.recover()
+            logging.getLogger('sazabi.desktop').info('Sessão desktop iniciada')
             if self.progress:
                 agent.event_sink = lambda kind, data: self.events.put(('activity', dict(kind=kind, **data)))
-            if not config.mock and config.database_path != ':memory:':
-                agent.db.backup()
+            if not config.mock:
+                try:maintenance.tick(self._maintenance_cancel,allow_refresh=False)
+                except Exception:
+                    logging.getLogger('sazabi.desktop').exception('Manutenção inicial falhou; aplicação permanece disponível')
             self.events.put(('ready', 'Pronto para pesquisar.' if config.mock or config.search_api_key
                              else 'Configure SEARCH_API_KEY no .env e reinicie. Histórico local disponível.'))
             self._snapshot(agent)
             while True:
-                command = self.commands.get()
+                try:command = self.commands.get(timeout=30)
+                except Empty:
+                    with self._submission_lock:
+                        if self._closed:break
+                        if self._active_request is not None or not self.commands.empty():continue
+                        self._maintenance_cancel.clear()
+                    if not config.mock:
+                        try:maintenance.tick(self._maintenance_cancel)
+                        except Exception:
+                            logging.getLogger('sazabi.desktop').exception('Falha na manutenção da sessão')
+                    continue
                 if command is None:
                     break
                 if isinstance(command, GroqRequest):
@@ -94,6 +116,8 @@ class AgentWorker:
                             if self._active_request is request:
                                 self._active_request = None
                     if self.progress and agent.last_skill_result is not None:
+                        try:agent.last_skill_result.data['notify']=maintenance.options()['notifications']
+                        except ValueError:pass
                         self.events.put(('command_result', agent.last_skill_result.to_dict()))
                     else:
                         self.events.put(('reply', reply))
@@ -112,9 +136,15 @@ class AgentWorker:
             logging.getLogger('sazabi.desktop').exception('Falha ao iniciar desktop')
             self.events.put(('error', 'Não foi possível iniciar. Confira a configuração e o log.'))
         finally:
-            if agent is not None:
-                agent.db.close()
-            self.events.put(('closed', ''))
+            try:
+                if agent is not None:
+                    agent.db.close()
+            except Exception:
+                logging.getLogger('sazabi.desktop').exception('Falha ao fechar banco da sessão')
+            finally:
+                stack.close()
+                logging.getLogger('sazabi.desktop').info('Sessão desktop encerrada; nenhuma tarefa continua após closed')
+                self.events.put(('closed', ''))
 
     def _snapshot(self, agent):
         if self.snapshots:
@@ -131,6 +161,7 @@ class AgentWorker:
         with self._submission_lock:
             if self._closed or self._active_request is not None or not self.thread.is_alive():
                 return False
+            self._maintenance_cancel.set()
             self._active_request = CommandRequest(text)
             if self.progress and command and command.name == 'search':
                 self.events.put(('activity', {'kind': 'SKILL_STATE', 'skill': 'search', 'status': 'queued'}))
@@ -139,6 +170,7 @@ class AgentWorker:
 
     def cancel(self):
         with self._submission_lock:
+            self._maintenance_cancel.set()
             if self._active_request:
                 self._active_request.cancelled.set()
 
@@ -148,4 +180,5 @@ class AgentWorker:
                 return
             self._closed = True
         self.cancel()
+        self._maintenance_cancel.set()
         self.commands.put(None)
