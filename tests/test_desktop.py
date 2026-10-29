@@ -48,9 +48,9 @@ def test_real_worker_without_key_keeps_local_commands_available():
     worker = AgentWorker(Config(database_path=':memory:', search_api_key=''))
     try:
         kind, message = worker.events.get(timeout=5)
-        assert kind == 'ready' and 'SEARCH_API_KEY no .env' in message
-        worker.commands.put('/status')
-        assert 'Fontes ativas: nenhuma' in worker.events.get(timeout=5)[1]
+        assert kind == 'ready' and 'projetos locais' in message
+        worker.commands.put('/settings')
+        assert 'local_roots' in worker.events.get(timeout=5)[1]
         worker.commands.put('/history')
         assert worker.events.get(timeout=5)[0] == 'reply'
     finally:

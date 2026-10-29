@@ -38,6 +38,11 @@ class Config:
     commercial_profile_path: str = str(Path(__file__).resolve().parents[1] / 'commercial_profile.json')
     layla_url: str = 'http://127.0.0.1:5000'
     layla_session_cookie: str = field(default='', repr=False)
+    local_roots: tuple = field(default_factory=lambda: (str(Path(__file__).resolve().parents[1]),))
+    local_routines: dict = field(default_factory=dict)
+    legacy_commercial: bool = False  # Internal compatibility harness, never loaded from .env.
+    knowledge_web: str = 'wikimedia'
+    knowledge_language: str = 'pt'
 
 
 def read_env_file(path: str) -> Dict[str, str]:
@@ -102,7 +107,16 @@ def load_config(env_file: str = ".env", services_file: str = "services.yaml",
         search_limit = min(20, max(1, int(get('SEARCH_LIMIT', '5'))))
     except ValueError:
         search_limit = 5
-    return Config(env_file=str(Path(env_file).resolve()), env=get("SAZABI_ENV", "development"), database_path=database, mock=mock,
+    import json
+    roots = tuple(p.strip() for p in get('LOCAL_ROOTS', str(Path(__file__).resolve().parents[1])).split(';') if p.strip())
+    routines = json.loads(get('LOCAL_ROUTINES_JSON', '{}'))
+    if not roots or not isinstance(routines, dict):
+        raise ValueError('LOCAL_ROOTS ou LOCAL_ROUTINES_JSON inválido.')
+    web = get('KNOWLEDGE_WEB', 'wikimedia')
+    language = get('KNOWLEDGE_LANGUAGE', 'pt')
+    if web not in ('wikimedia', 'disabled') or language not in ('pt', 'en'):
+        web, language = 'disabled', 'pt'
+    return Config(knowledge_web=web, knowledge_language=language, local_roots=roots, local_routines=routines, env_file=str(Path(env_file).resolve()), env=get("SAZABI_ENV", "development"), database_path=database, mock=mock,
                   cache_ttl_hours=ttl, log_level=get("LOG_LEVEL", "INFO"),
                   log_file=get("LOG_FILE", "logs/sazabi.log"), default_region=get("DEFAULT_REGION"),
                   services=read_services(services_file),

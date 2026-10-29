@@ -18,7 +18,7 @@ def build_agent(config: Config, notifier: Optional[Notifier] = None,
                 sources: Optional[Sequence[CompanySource]] = None) -> SazabiAgent:
     if sources is None:
         sources = []
-        if not config.mock and config.search_api_key:
+        if config.legacy_commercial and not config.mock and config.search_api_key:
             from research.web_source import TavilySearch, WebSource
             sources = [WebSource(TavilySearch(config.search_api_key, config.search_limit))]
     db=Database(config.database_path)

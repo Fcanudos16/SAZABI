@@ -10,7 +10,7 @@ from core.command_router import route
 from core.config import load_config
 from utils.logger import setup_logging
 
-BANNER = """SAZABI — olheiro digital da software house
+BANNER = """SAZABI — agente pessoal local
 Modo: {mode}. Digite /help para ver os comandos, ou "sair" para encerrar.
 """
 
@@ -62,7 +62,7 @@ def run_cli(config,args):
         finally:
             agent.db.close()
         return 0
-    if not config.mock and config.database_path != ':memory:':
+    if config.legacy_commercial and not config.mock and config.database_path != ':memory:':
         from core.maintenance import Maintenance
         try: Maintenance(agent).tick(allow_refresh=False)
         except Exception: print('Manutenção inicial falhou; consulte /health. Histórico disponível.')
@@ -90,8 +90,8 @@ def run_cli(config,args):
         return 0
 
     print(BANNER.format(mode="mock (dados fictícios)" if config.mock else "real"))
-    if not config.mock and not config.search_api_key:
-        print('Pesquisa real desativada: configure SEARCH_API_KEY (Tavily).\n')
+    if not config.legacy_commercial:
+        print('Funções locais disponíveis sem chaves de API.\n')
     while True:
         try:
             text = input("você> ").strip()

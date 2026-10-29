@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 
 from core.config import Config
-from core.bootstrap import build_agent
+from tests.factories import build_agent  # Explicit archived commercial harness.
 from research.web_source import WebSource, TavilySearch, PageParser, city_key
 from research.base import SearchResult
 from utils.http_client import FetchError

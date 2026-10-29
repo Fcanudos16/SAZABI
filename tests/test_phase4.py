@@ -126,7 +126,7 @@ def test_failed_worker_never_emits_response_ready():
             kind,value=worker.events.get(timeout=5)
             seen.append((kind,value))
             if kind=='command_result':break
-        assert value['status']=='unconfigured'
+        assert value['status']=='failed'
         assert not any(k=='activity' and v['kind']=='RESPONSE_READY' for k,v in seen)
     finally:worker.close();worker.thread.join(5)
     assert not worker.thread.is_alive()

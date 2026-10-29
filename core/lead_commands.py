@@ -130,6 +130,9 @@ class LeadCommands:
             if data['evaluations']:
                 from analysis.qualification import LABELS
                 last=data['evaluations'][0]
+                if last.get('search_brief'):
+                    from analysis.search_brief import detail_text
+                    lines += ['Análise comercial do /search', detail_text(last['search_brief'])]
                 lines.append(f"Última avaliação salva: {last['score']}/100 — {LABELS[last['category']]} · {last['evaluated_at']}")
             lines.append('Qualificar/revalidar: /qualify '+identity+' · Justificativa e histórico: /evaluations '+identity)
             if data['evaluations']:

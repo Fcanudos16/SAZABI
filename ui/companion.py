@@ -430,8 +430,8 @@ class CompanionApp:
         menu.add_command(label='Nova pesquisa', command=lambda: self.menu_action(self.open_search))
         menu.add_command(label='Countdown', command=lambda: self.menu_action(self.open_countdown))
         menu.add_command(label='Monitor do sistema', command=lambda: self.menu_action(self.open_system_monitor))
-        menu.add_command(label='Última pesquisa', command=lambda: self.menu_action(self.show_last_result))
-        menu.add_command(label='Perfil comercial', command=lambda: self.menu_action(self.open_profile))
+        menu.add_command(label='Último resultado', command=lambda: self.menu_action(self.show_last_result))
+        menu.add_command(label='Tarefas pessoais', command=lambda: self.menu_action(lambda: self.submit('/task list')))
         menu.add_command(label='Terminal LAYLA',command=lambda:self.menu_action(self.open_ai))
         menu.add_separator()
         menu.add_checkbutton(label='Sempre no topo', variable=self.always_on_top, command=self.topmost_changed)
@@ -516,7 +516,7 @@ class CompanionApp:
             return
         terminal.begin(text)
         from core.command_router import route
-        self.active_research=route(text).name in ('search','investigate')
+        self.active_research=True  # Every worker operation supports cancellation.
         self.cancel_requested=False
         self.notice, self.operation_failed = None, False
         if self.idle_job:

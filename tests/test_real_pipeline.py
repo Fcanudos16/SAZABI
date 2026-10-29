@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from core.bootstrap import build_agent
+from tests.factories import build_agent  # Explicit archived commercial harness.
 from core.config import Config, load_config
 from core.connection import connect
 from database.models import SearchCriteria
@@ -107,11 +107,12 @@ def test_failed_connection_preserves_previous_key(tmp_path):
 
 
 def test_production_never_loads_test_data():
+    from core.bootstrap import build_agent
     agent = build_agent(Config(database_path=':memory:'))
     try:
         assert not agent.finder.sources
         assert agent.companies.count() == 0
-        assert 'Pesquisa não iniciada' in agent.handle('/research clínicas em Campinas')
+        assert 'Nenhuma API foi chamada' in agent.handle('/research clínicas em Campinas')
         assert agent.runs.count() == 0
     finally:
         agent.db.close()
@@ -156,7 +157,7 @@ def test_cli_without_key_from_another_directory_is_real_and_persistent(tmp_path,
             capture_output=True, encoding='utf-8', timeout=30)
         assert completed.returncode == 0, completed.stderr
         return completed.stdout
-    assert 'definida' in run('/set region Campinas')
-    assert 'Campinas' in run('/status')
-    assert 'Pesquisa não iniciada' in run('/search clínicas em Campinas')
-    assert 'Pesquisas realizadas: 0' in run('/status')
+    assert 'salva' in run('/task add "Visitar Campinas"')
+    assert 'Visitar Campinas' in run('/task list')
+    assert 'Nenhuma API foi chamada' in run('/search clínicas em Campinas')
+    assert 'local_roots' in run('/settings')

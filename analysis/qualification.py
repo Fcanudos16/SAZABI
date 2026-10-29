@@ -8,7 +8,7 @@ from analysis.opportunity_analyzer import OpportunityAnalyzer, RULES
 from utils.normalization import normalize_text
 from utils.timeutils import utcnow, parse_iso
 
-VERSION = 'commercial-3'
+VERSION = 'commercial-4'
 LABELS = {'high':'Alta', 'moderate':'Moderada', 'low':'Baixa', 'insufficient':'Dados insuficientes'}
 
 
@@ -119,4 +119,7 @@ def evaluate(company, observations, profile, now=None, strategy_context=None):
     return {'engine_version':VERSION,'company':{'id':company.id,'name':company.name,'segment':company.segment,'location':company.location},
             'score':score,'category':category,'factors':factors,'adjustments':adjustments,'negative_factors':contrary,
             'facts':facts,'recommendations':recommendations,'gaps':gaps,'next_action':action,'profile':profile,
+            'commercial_signals':[dict(type=s.type, description=s.description, evidence=s.evidence,
+                                       source=s.source, url=s.source_url, confidence=s.confidence,
+                                       detected_at=s.detected_at) for s in signals],
             'strategy_context':strategy_context}

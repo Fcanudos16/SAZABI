@@ -29,6 +29,12 @@ class SignalRule:
 
 
 RULES: Sequence[SignalRule] = (
+    SignalRule('manual_process', r'\b(?:precisamos|necessitamos|buscamos)\s+(?:de\s+)?(?:um[a]?\s+)?(?:automatizar|automacao)',
+               'Necessidade de software ou automação declarada; validar escopo', 'high'),
+    SignalRule('operational_complexity', r'\b(?:precisamos|necessitamos|buscamos)\s+(?:de\s+)?(?:um[a]?\s+)?(?:sistema|software)',
+               'Necessidade de sistema declarada; validar finalidade e escopo', 'high'),
+    SignalRule('digital_tools', r'(?:integrar|integracao|integracoes).{0,40}(?:sistemas|plataformas|ferramentas)',
+               'Integração mencionada publicamente; contratação externa não confirmada', 'moderate'),
     SignalRule("multiple_locations", _NUM + r"\s+(?:unidades|filiais|lojas|sedes)\b",
                "Possível operação em múltiplas unidades", "high", min_count=2),
     SignalRule("operational_complexity",

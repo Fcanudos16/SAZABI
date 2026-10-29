@@ -9,7 +9,7 @@ from skills.registry import SkillRegistry
 from skills.base import SkillContext, SkillResult
 from skills.search.skill import SearchSkill
 from core.config import Config
-from core.bootstrap import build_agent
+from tests.factories import build_agent  # Explicit archived commercial harness.
 from core.worker import AgentWorker
 
 

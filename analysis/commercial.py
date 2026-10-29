@@ -26,13 +26,20 @@ class CommercialService:
         digest=hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         return company,observations,profile,digest
 
-    def qualify(self, identity, refresh=False, strategy_context=None):
+    def qualify(self, identity, refresh=False, strategy_context=None, investigation_state='analyzed'):
         company,observations,profile,digest=self.inputs(identity,strategy_context)
+        if investigation_state == 'partial':
+            digest=hashlib.sha256((digest+':partial').encode()).hexdigest()
         with self.db.transaction():
             last=self.db.query_one('SELECT * FROM lead_evaluations WHERE company_id=? ORDER BY id DESC LIMIT 1',(company.id,))
             if last and last['input_hash']==digest and not refresh:
                 return self.unpack(last)
             result=evaluate(company,observations,profile,strategy_context=strategy_context)
+            from analysis.search_brief import build_brief
+            result['search_brief'] = build_brief(company, result)
+            if investigation_state == 'partial':
+                result['search_brief']['investigation_state']='partial'
+                result['search_brief']['limitations'].append('Investigação parcial: fontes indisponíveis nesta coleta; conferir diagnóstico da pesquisa.')
             stamp=now_iso()
             cursor=self.db.execute('INSERT INTO lead_evaluations(company_id,input_hash,engine_version,score,category,result_json,evaluated_at) VALUES(?,?,?,?,?,?,?)',
                 (company.id,digest,VERSION,result['score'],result['category'],json.dumps(result,ensure_ascii=False),stamp))

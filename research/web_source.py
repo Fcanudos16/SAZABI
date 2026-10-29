@@ -249,6 +249,8 @@ class WebSource(CompanySource):
                 results.append(company)
             else:
                 record['reason'] = self.extraction_reason
+                if self.extraction_reason.startswith(('Página governamental', 'Página editorial')):
+                    record['status'] = 'discarded'
         provider_errors = getattr(self.provider, 'errors', [])
         if isinstance(provider_errors, list):
             self.errors.extend(provider_errors)
@@ -258,6 +260,9 @@ class WebSource(CompanySource):
         self.extraction_reason = 'Identidade da empresa não confirmada no site.'
         # Directories/social networks are discovery pages, never company identities.
         host = (urlsplit(page.url).hostname or '').removeprefix('www.')
+        if host.endswith(('.gov.br', '.gov')) or host == 'wikipedia.org' or host.endswith('.wikipedia.org'):
+            self.extraction_reason = 'Página governamental ou enciclopédica; não é empresa qualificada.'
+            return None
         platforms = ('facebook.com', 'instagram.com', 'linkedin.com', 'youtube.com',
                      'google.com', 'google.com.br', 'econodata.com.br', 'solutudo.com.br',
                      'doctoralia.com.br', 'cnpj.biz', 'yelp.com', 'tripadvisor.com.br')
@@ -344,14 +349,16 @@ class WebSource(CompanySource):
         pages = [page]
         origin = urlsplit(page.url)
         selected = set()
-        for link in page.links:
+        # Investigate operating/services/job pages before general institutional pages.
+        links = sorted(page.links, key=lambda link: not bool(re.search(r'servicos|processos|vagas|carreiras|trabalhe|noticias|services|careers', link, re.I)))
+        for link in links:
             url = clean_url(urljoin(page.url, link))
             if not url or url == page.url or url in selected:
                 continue
             parts = urlsplit(url)
             if parts.hostname != origin.hostname or parts.query:
                 continue
-            if not re.search(r'/(?:contato|sobre|quem-somos|unidades|contact|about)(?:/|$|\.html)', parts.path, re.I):
+            if not re.search(r'/(?:servicos|processos|vagas|carreiras|trabalhe-conosco|noticias|services|careers|contato|sobre|quem-somos|unidades|contact|about)(?:/|$|\.html)', parts.path, re.I):
                 continue
             selected.add(url)
             try:

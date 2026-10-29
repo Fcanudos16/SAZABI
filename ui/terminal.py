@@ -28,15 +28,15 @@ class ResultTerminal:
         button(header, '×', self.hide).pack(side='right')
         actions = tk.Frame(body, bg=BG)
         actions.pack(fill='x', padx=12, pady=(0, 6))
-        for column,(text, command) in enumerate([('Leads', '/leads'), ('Histórico', '/history'), ('Ajuda', '/help'), ('Visão geral', '/overview'), ('Tarefas', '/tasks')]):
+        for column,(text, command) in enumerate([('Arquivos', '/files find .'), ('Histórico', '/history'), ('Ajuda', '/help'), ('Projeto', '/project .'), ('Tarefas', '/task list')]):
             button(actions, text, lambda value=command: app.submit(value)).grid(row=0,column=column,sticky='w',padx=(0,5))
         button(actions, 'Último', app.show_last_result).grid(row=1,column=0,sticky='w')
         button(actions, 'Nova pesquisa', app.open_search).grid(row=1,column=1,sticky='w')
         self.cancel = button(actions, 'Cancelar', app.cancel_search)
         self.cancel.grid(row=1,column=2,sticky='w')
-        button(actions, 'Perfil', lambda: app.submit('/profile')).grid(row=1,column=3,sticky='w')
-        button(actions, 'Estratégias', lambda: app.submit('/strategies')).grid(row=1,column=4,sticky='w')
-        for column,(label,command) in enumerate([('Saúde','/health'),('Backup','/backup'),('Manutenção','/maintenance')]):
+        button(actions, 'Git', lambda: app.submit('/git status .')).grid(row=1,column=3,sticky='w')
+        button(actions, 'Rotinas', lambda: app.submit('/run')).grid(row=1,column=4,sticky='w')
+        for column,(label,command) in enumerate([('Limites','/settings'),('Backup','/backup')]):
             button(actions,label,lambda value=command:app.submit(value)).grid(row=2,column=column,sticky='w')
         self.cancel.configure(state='disabled')
         self.status = tk.StringVar(value='IDLE · clique direito no mascote para configurar')
@@ -74,7 +74,10 @@ class ResultTerminal:
         self.execution_number=0
         self.current_query=''
         self.last_result=None
-        self.append('Configurações de APIs e Groq: edite o .env e reinicie.\n/search e /research usam Tavily (créditos).\n/ai abre a LAYLA; o texto é um rascunho até você enviar.\n', 'event')
+        self.result_controls=[]
+        self.expanded_opportunities=set()
+        self.saved_skill_result=None
+        self.append('SAZABI pessoal: tarefas, arquivos, projetos e pesquisa local.\n/help mostra os comandos; configurações ficam no .env.\n/ai abre a LAYLA; o texto é um rascunho até você enviar.\n', 'event')
 
     def enter(self, event=None):
         if self.autocomplete.visible:
@@ -88,6 +91,10 @@ class ResultTerminal:
                 'cancelled':'Cancelado','unconfigured':'Configuração necessária','needs_input':'Aguardando informação',
                 'needs_confirmation':'Aguardando confirmação','ready':'Pronto'}
         self.status.set(labels.get(result['status'],result['status']))
+        if 'opportunities' in result.get('data', {}):
+            self.render_opportunities(result['data'])
+            self.output.yview_moveto(0)
+            return
         self.append(result.get('message') or result.get('error') or 'Sem resposta.',
                     'result' if result.get('success') else 'error')
         # Structured data is optional; render it without knowing the provider.
@@ -97,7 +104,61 @@ class ResultTerminal:
                             for key in ('name', 'segment', 'location', 'website')))
         self.output.yview_moveto(0)
 
+    def clear_controls(self):
+        for widget in self.result_controls:
+            widget.destroy()
+        self.result_controls=[]
+
+    def expandable(self, identity, label, text, outreach=''):
+        tag='detail_'+identity
+        frame=tk.Frame(self.output,bg=BG)
+        self.result_controls.append(frame)
+        def toggle():
+            opened=identity not in self.expanded_opportunities
+            if opened: self.expanded_opportunities.add(identity)
+            else: self.expanded_opportunities.discard(identity)
+            self.output.tag_configure(tag,elide=not opened)
+            control.configure(text='Ver menos' if opened else label)
+        control=button(frame,'Ver menos' if identity in self.expanded_opportunities else label,toggle)
+        control.pack(side='left')
+        if outreach:
+            def copy():
+                self.window.clipboard_clear()
+                self.window.clipboard_append(outreach)
+                self.status.set('Abordagem copiada. Nenhuma mensagem enviada.')
+            button(frame,'Copiar abordagem',copy).pack(side='left',padx=8)
+        self.output.configure(state='normal')
+        self.output.window_create('end',window=frame)
+        self.output.insert('end','\n')
+        start=self.output.index('end-1c')
+        self.output.insert('end',text+'\n\n',tag)
+        # Only validated HTTP(S) sources become clickable; no automatic browsing.
+        import re
+        from analysis.qualification import public_url
+        import webbrowser
+        for index,match in enumerate(re.finditer(r'https?://[^\s]+',text)):
+            url=match.group()
+            if not public_url(url): continue
+            link=f'{tag}_url_{index}'
+            self.output.tag_add(link,f'{start}+{match.start()}c',f'{start}+{match.end()}c')
+            self.output.tag_configure(link,underline=True)
+            self.output.tag_bind(link,'<Button-1>',lambda event,value=url:webbrowser.open(value))
+        self.output.tag_configure(tag,elide=identity not in self.expanded_opportunities)
+        self.output.configure(state='disabled')
+
+    def render_opportunities(self, data):
+        from analysis.search_brief import detail_text
+        self.append(data['headline'])
+        for brief in data['opportunities']:
+            self.append(f"{brief['name']}\n{brief['summary']}\n{brief['situation']}\nPrioridade {brief['priority']}: {brief['score']}/100 · Evidência {brief['evidence_quality']}")
+            if brief['investigation_state']=='partial': self.append('Investigação parcial; confira as limitações.', 'event')
+            self.expandable(str(brief['company_id']),'Ver mais',detail_text(brief),brief['outreach'])
+        pending='\n'.join(f"{p['name']} — {p['reason']}\n{p.get('url') or ''}" for p in data['pending_companies'])
+        self.expandable('diagnostics','Diagnóstico e pendências',pending+'\n'+data['diagnostics'])
+
     def begin(self, query):
+        self.clear_controls()
+        self.expanded_opportunities.clear()
         self.execution_number+=1
         self.current_query=query
         self.heading.set(f'SAZABI / EXECUÇÃO #{self.execution_number}')
@@ -108,13 +169,19 @@ class ResultTerminal:
         self.append(f'Execução local #{self.execution_number} · {query}', 'user')
 
     def remember_result(self):
+        from copy import deepcopy
+        self.saved_skill_result=deepcopy(self.last_skill_result)
         self.last_result=(self.output.get('1.0','end')[-200000:],self.status.get(),self.heading.get())
 
     def show_last_result(self):
         if self.last_result is None: return False
         text,status,heading=self.last_result
+        self.clear_controls()
         self.output.configure(state='normal'); self.output.delete('1.0','end'); self.output.configure(state='disabled')
-        self.append(text)
+        if self.saved_skill_result and 'opportunities' in self.saved_skill_result.get('data',{}):
+            self.render_skill(self.saved_skill_result)
+        else:
+            self.append(text)
         self.status.set('Última pesquisa · '+status)
         self.heading.set(heading)
         self.output.yview_moveto(0)

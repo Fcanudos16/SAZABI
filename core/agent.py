@@ -70,8 +70,15 @@ class SazabiAgent:
         from skills.search.skill import SearchSkill
         from core.commands.router import CommandRouter
         self.skills = SkillRegistry()
-        self.skills.register(SearchSkill())
-        self.command_router = CommandRouter(self.skills)
+        from core.commands.registry import default_registry
+        if config.legacy_commercial:
+            self.skills.register(SearchSkill())
+        else:
+            from skills.personal import PersonalService, PersonalSkill, COMMANDS
+            self.personal = PersonalService(self)
+            for name in COMMANDS:
+                self.skills.register(PersonalSkill(name, self.personal))
+        self.command_router = CommandRouter(self.skills, default_registry(config.legacy_commercial))
 
     def emit(self, kind, **data):
         if self.execution_context and not self.skill_context and kind in ('SEARCH_STARTED','SEARCH_PROCESSING','TASK_PROCESSING'):
@@ -123,10 +130,14 @@ class SazabiAgent:
         try:
             command = parse(text)
         except ValueError as error:
+            from skills.base import SkillResult
+            self.last_skill_result = SkillResult(False, 'parser', 'failed', str(error))
             return str(error)
         if re.search(r'\b(?:tvly-|gsk_)[A-Za-z0-9_-]+', text):
-            return 'Configure SEARCH_API_KEY ou GROQ_API_KEY somente no .env e reinicie. A chave não foi salva na conversa.'
-        if command and command.name == 'groq':
+            from skills.base import SkillResult
+            self.last_skill_result = SkillResult(False, 'security', 'failed', 'Configure credenciais somente no .env e reinicie. A chave não foi salva na conversa.')
+            return self.last_skill_result.message
+        if command and command.name == 'groq' and self.config.legacy_commercial:
             self._pending = None
             return self._ai_summary(command.arguments)
         if command and self.command_router.registry.get(command.name):
@@ -136,9 +147,15 @@ class SazabiAgent:
             if cancelled is not None:
                 context.cancelled = cancelled
             self.last_skill_result = self.command_router.execute(text, context)
-            if command.name == 'search':
+            if command.name == 'search' and self.config.legacy_commercial:
                 self.memory.log_turn("user", text)
                 self.memory.log_turn("assistant", self.last_skill_result.message)
+            return self.last_skill_result.message
+        if not self.config.legacy_commercial:
+            from skills.base import SkillResult
+            if text.strip().lower() in ('ajuda', 'help', ''):
+                return self._handle('/help', cancelled)
+            self.last_skill_result = SkillResult(False, 'personal', 'failed', 'Comando indisponível. Use /help para tarefas, arquivos, projetos e pesquisa local.')
             return self.last_skill_result.message
         self.memory.log_turn("user", text)
         try:
@@ -278,6 +295,7 @@ class SazabiAgent:
             raise
 
     def _execute_search(self, criteria, run):
+        self.search_analysis_states = {}
         log.info("Pesquisa iniciada: run_id=%s", run.id)
         self.finder.errors, self.investigator.errors = [], []
         self.emit('SEARCH_STARTED', message='Buscando fontes públicas.')
@@ -380,15 +398,23 @@ class SazabiAgent:
     def _qualify_local(self, identity):
         from analysis.commercial import CommercialService
         try:
-            CommercialService(self.db,self.config).qualify(identity,strategy_context=getattr(self,'search_strategy_context',None))
-        except ValueError:
+            CommercialService(self.db,self.config).qualify(identity,strategy_context=getattr(self,'search_strategy_context',None),
+                investigation_state=getattr(self,'search_analysis_states',{}).get(identity,'analyzed'))
+        except Exception:
+            log.exception('Análise comercial indisponível para %s', identity)
+            self.search_analysis_states = getattr(self, 'search_analysis_states', {})
+            self.search_analysis_states[identity] = 'failed'
+            self.investigator.errors.append('Análise comercial indisponível para ' + identity + '; dados coletados preservados.')
             self.emit('TASK_PROCESSING',message='Perfil comercial indisponível. Revise /profile; pesquisa preservada.')
 
     def _investigate(self, profile: CompanyProfile, refresh: bool) -> Outcome:
         stored = self.sources.list_for_company(profile.id)
         self.emit('TASK_PROCESSING' if not refresh and self.investigator.is_fresh(profile) else 'SEARCH_STARTED',
                   message='Consultando evidências de ' + profile.name + '.')
+        previous_errors = len(self.investigator.errors)
         result = self.investigator.investigate(profile, refresh=refresh, stored=stored)
+        self.search_analysis_states = getattr(self, 'search_analysis_states', {})
+        self.search_analysis_states[profile.id] = 'failed' if result.failed else 'partial' if len(self.investigator.errors)>previous_errors else 'analyzed'
         context=self.skill_context or self.execution_context
         if context: context.checkpoint()
         if result.from_cache or result.failed:

@@ -30,6 +30,9 @@ def render(result):
         lines.append(f"Hipótese: {r['solution']} · serviços: {', '.join(r['services'])} · fontes {r['evidence_ids']}\nMotivo: {'; '.join(r['motivation'])}\n{r['hypothesis']} {r['question']}\nPróxima ação: {r['next_action']}")
     lines.extend('Lacuna: '+g for g in result['gaps'])
     lines.extend(['Próxima ação: '+result['next_action'],'Recalcular: /qualify '+result['company']['id']+' --refresh'])
+    if result.get('search_brief'):
+        from analysis.search_brief import detail_text
+        lines += ['Análise comercial do /search', detail_text(result['search_brief'])]
     return '\n'.join(lines)
 
 

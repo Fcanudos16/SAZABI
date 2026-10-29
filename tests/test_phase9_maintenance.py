@@ -199,7 +199,7 @@ def test_logs_redact_tracebacks_and_rotate(tmp_path):
 
 
 def test_worker_backup_failure_still_ready_and_releases_session(tmp_path):
-    config=Config(database_path=str(tmp_path/'worker.db'))
+    config=Config(database_path=str(tmp_path/'worker.db'), legacy_commercial=True)
     with patch('database.database.Database.backup',side_effect=OSError('synthetic failure')):
         worker=AgentWorker(config)
         events=[]

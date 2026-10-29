@@ -53,12 +53,11 @@ class AgentWorker:
             logging.getLogger('sazabi.desktop').info('Sessão desktop iniciada')
             if self.progress:
                 agent.event_sink = lambda kind, data: self.events.put(('activity', dict(kind=kind, **data)))
-            if not config.mock:
+            if config.legacy_commercial and not config.mock:
                 try:maintenance.tick(self._maintenance_cancel,allow_refresh=False)
                 except Exception:
                     logging.getLogger('sazabi.desktop').exception('Manutenção inicial falhou; aplicação permanece disponível')
-            self.events.put(('ready', 'Pronto para pesquisar.' if config.mock or config.search_api_key
-                             else 'Configure SEARCH_API_KEY no .env e reinicie. Histórico local disponível.'))
+            self.events.put(('ready', 'Pronto. Tarefas, arquivos e projetos locais disponíveis. /help'))
             self._snapshot(agent)
             while True:
                 try:command = self.commands.get(timeout=30)
@@ -67,7 +66,7 @@ class AgentWorker:
                         if self._closed:break
                         if self._active_request is not None or not self.commands.empty():continue
                         self._maintenance_cancel.clear()
-                    if not config.mock:
+                    if config.legacy_commercial and not config.mock:
                         try:maintenance.tick(self._maintenance_cancel)
                         except Exception:
                             logging.getLogger('sazabi.desktop').exception('Falha na manutenção da sessão')

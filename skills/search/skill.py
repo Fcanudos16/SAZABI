@@ -101,21 +101,39 @@ class SearchSkill:
                 context.state('failed')
                 return SkillResult(False,self.name,'failed',message=message)
             companies = agent.companies.get_many(agent.runs.company_ids(run.id))
-            summaries=[]
+            from analysis.search_brief import qualification_gaps, matches_need
+            cards, pending = [], []
+            states = getattr(agent, 'search_analysis_states', {})
             for company in companies:
+                gaps = qualification_gaps(company, criteria)
                 evaluation=agent.db.query_one('SELECT result_json FROM lead_evaluations WHERE company_id=? ORDER BY id DESC LIMIT 1',(company.id,))
-                if not evaluation: continue
-                saved=json.loads(evaluation['result_json'])
-                # A failed investigation can leave a previous assessment intact.
-                # Do not present that assessment as if it used this search plan.
-                if saved.get('strategy_context')!=search_plan: continue
-                summaries.append(company.name+f": {saved['score']}/100 — {saved['category']}; "+
-                    ('; '.join(r['solution'] for r in saved['recommendations']) or 'sem hipótese compatível sustentada')+
-                    ('\n  '+'; '.join(saved['negative_factors']) if saved['negative_factors'] else '')+
-                    '\n  Justificativa e fontes: /lead '+company.id)
-            if summaries: message+='\n\nCompatibilidade comercial (hipóteses, não necessidades confirmadas):\n'+'\n'.join(summaries)
-            data = dict(run_id=run.id, strategy=search_plan, companies=[dict(id=p.id, name=p.name, segment=p.segment,
-                location=p.location, website=p.website) for p in companies])
+                saved=json.loads(evaluation['result_json']) if evaluation else {}
+                gaps += [reason for reason in saved.get('negative_factors',[]) if reason.startswith('Lead excluído')]
+                brief=saved.get('search_brief')
+                if gaps or states.get(company.id) == 'failed' or not brief or saved.get('strategy_context') != search_plan:
+                    pending.append(dict(id=company.id, name=company.name, url=company.website,
+                        reason='; '.join(gaps) or 'Análise indisponível nesta pesquisa; dados anteriores preservados.'))
+                    continue
+                if not matches_need(criteria.need, brief):
+                    pending.append(dict(id=company.id,name=company.name,url=company.website,
+                        reason='Necessidade solicitada ainda não sustentada por evidências.'))
+                    continue
+                cards.append(brief)
+            cards.sort(key=lambda c: (-c['score'], c['name']))
+            diagnostics = message
+            message = ('Pesquisa parcial — confira as limitações.' if run.status == 'partial' else
+                       'Pesquisa não concluída.' if run.status == 'failed' else 'Pesquisa concluída.')
+            message += f'\n{len(cards)} empresas qualificadas; {len(pending)} empresas pendentes de validação.'
+            message += '\nEstratégia: ' + label
+            if not cards: message += '\nNenhuma empresa qualificada para apresentação comercial nesta pesquisa.'
+            if agent.config.mock: message += '\nModo mock: empresas e fontes fictícias.'
+            for card in cards:
+                message += f"\n\n{card['name']}\n{card['summary']}\n{card['situation']}\nPrioridade {card['priority']}: {card['score']}/100 · Evidência {card['evidence_quality']}\nDetalhes: /lead {card['company_id']}"
+            data = dict(run_id=run.id, strategy=search_plan, opportunities=cards,
+                        pending_companies=pending, discovery=agent.finder.hits, diagnostics=diagnostics,
+                        headline=message.split('\n\n')[0],
+                        companies=[dict(id=p.id, name=p.name, segment=p.segment,
+                                        location=p.location, website=p.website) for p in companies])
             status = run.status
             self.state = status
             context.state('failed' if status == 'failed' else 'completed')
